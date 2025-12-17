@@ -21,7 +21,7 @@ connectDB();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'prototype-to-mvp-frontend.vercel.app',
+  origin: process.env.CORS_ORIGIN || 'handsome-harmony-dev.up.railway.app',
   credentials: true
 }));
 app.use(morgan('dev'));
