@@ -21,7 +21,7 @@ connectDB();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://prototype-to-mvp-frontend.onrender.com',
+  origin: process.env.CORS_ORIGIN || 'prototype-to-mvp-frontend.vercel.app',
   credentials: true
 }));
 app.use(morgan('dev'));
