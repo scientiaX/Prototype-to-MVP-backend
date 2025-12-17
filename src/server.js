@@ -21,7 +21,7 @@ connectDB();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'handsome-harmony-dev.up.railway.app',
+  origin: process.env.CORS_ORIGIN || 'https://handsome-harmony-dev.up.railway.app',
   credentials: true
 }));
 app.use(morgan('dev'));
