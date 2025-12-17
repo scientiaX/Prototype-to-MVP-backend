@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import connectDB from './config/database.js';
 
 import profileRoutes from './routes/profileRoutes.js';
@@ -27,10 +28,28 @@ app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.get('/health', (req, res) => {
+app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Prototype to MVP Backend API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      profiles: '/api/profiles',
+      problems: '/api/problems',
+      arena: '/api/arena',
+      mentor: '/api/mentor',
+      user: '/api/user'
+    }
+  });
+});
+
+app.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.json({ 
+    status: 'ok', 
+    message: 'Prototype to MVP Backend API',
+    database: dbStatus,
     timestamp: new Date().toISOString()
   });
 });
