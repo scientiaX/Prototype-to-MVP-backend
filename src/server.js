@@ -20,9 +20,42 @@ const PORT = process.env.PORT || 3001;
 connectDB();
 
 app.use(helmet());
+
+// CORS configuration with multiple origins support
+const allowedOrigins = [
+  'https://prototype-to-mvp-frontend-production.up.railway.app',
+  'https://prototype-to-mvp-frontend-staging.up.railway.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000'
+];
+
+// Add any additional origins from environment variable
+if (process.env.CORS_ORIGIN) {
+  const envOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+  envOrigins.forEach(origin => {
+    if (origin && !allowedOrigins.includes(origin)) {
+      allowedOrigins.push(origin);
+    }
+  });
+}
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://prototype-to-mvp-frontend-production.up.railway.app',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
