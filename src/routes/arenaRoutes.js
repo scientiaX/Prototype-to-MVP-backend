@@ -6,6 +6,7 @@ import Achievement from '../models/Achievement.js';
 import Artifact from '../models/Artifact.js';
 import { evaluateSolution } from '../services/aiService.js';
 import { calculateXPDistribution, updateArchetype } from '../services/profileService.js';
+import * as orchestratorService from '../services/orchestratorService.js';
 
 const router = express.Router();
 
@@ -86,7 +87,7 @@ router.post('/submit', async (req, res) => {
     if (evaluation.level_up_achieved && problem.difficulty > profile.current_difficulty) {
       profile.current_difficulty = problem.difficulty;
       profile.highest_difficulty_conquered = Math.max(
-        profile.highest_difficulty_conquered, 
+        profile.highest_difficulty_conquered,
         problem.difficulty
       );
 
@@ -147,6 +148,9 @@ router.post('/abandon', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
+    // Also cleanup orchestrator session
+    await orchestratorService.abandonSession(session_id);
+
     res.json(session);
   } catch (error) {
     console.error('Abandon session error:', error);
@@ -163,6 +167,109 @@ router.get('/user/:user_id', async (req, res) => {
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Failed to get sessions' });
+  }
+});
+
+// ==========================================
+// REAL-TIME TRACKING ENDPOINTS
+// ==========================================
+
+/**
+ * Initialize orchestrator session (called after /start)
+ */
+router.post('/init-session', async (req, res) => {
+  try {
+    const { session_id, problem_id, user_id } = req.body;
+
+    if (!session_id || !problem_id || !user_id) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const result = await orchestratorService.initializeSession(session_id, problem_id, user_id);
+
+    res.json({
+      initialized: true,
+      timeouts: result.timeouts
+    });
+  } catch (error) {
+    console.error('Init session error:', error);
+    res.status(500).json({ error: 'Failed to initialize session' });
+  }
+});
+
+/**
+ * Real-time keystroke tracking
+ */
+router.post('/track', async (req, res) => {
+  try {
+    const { session_id, keystroke_data } = req.body;
+
+    if (!session_id) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+
+    const result = await orchestratorService.processUserKeystrokes(session_id, keystroke_data);
+    res.json(result);
+  } catch (error) {
+    console.error('Track keystroke error:', error);
+    res.status(500).json({ error: 'Failed to track keystroke' });
+  }
+});
+
+/**
+ * Get next AI action (polling endpoint for real-time interventions)
+ */
+router.get('/next-action/:session_id', async (req, res) => {
+  try {
+    const action = await orchestratorService.requestNextAction(req.params.session_id);
+    res.json(action);
+  } catch (error) {
+    console.error('Next action error:', error);
+    res.status(500).json({ error: 'Failed to get next action' });
+  }
+});
+
+/**
+ * Handle user response to AI intervention
+ */
+router.post('/intervention-response', async (req, res) => {
+  try {
+    const { session_id, response_type } = req.body;
+
+    if (!session_id || !response_type) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const result = await orchestratorService.handleInterventionResponse(session_id, response_type);
+    res.json(result);
+  } catch (error) {
+    console.error('Intervention response error:', error);
+    res.status(500).json({ error: 'Failed to handle intervention response' });
+  }
+});
+
+/**
+ * Get session metrics (for debugging/analytics)
+ */
+router.get('/metrics/:session_id', async (req, res) => {
+  try {
+    const ArenaSessionMetrics = (await import('../models/ArenaSessionMetrics.js')).default;
+    const SessionMemory = (await import('../models/SessionMemory.js')).default;
+
+    const metrics = await ArenaSessionMetrics.findOne({ session_id: req.params.session_id });
+    const memory = await SessionMemory.findOne({ session_id: req.params.session_id });
+
+    res.json({
+      metrics: metrics || null,
+      memory: memory ? {
+        adaptive_state: memory.adaptive_state,
+        conversation_count: memory.conversation?.length || 0,
+        ai_decisions_count: memory.ai_decisions?.length || 0
+      } : null
+    });
+  } catch (error) {
+    console.error('Get metrics error:', error);
+    res.status(500).json({ error: 'Failed to get metrics' });
   }
 });
 

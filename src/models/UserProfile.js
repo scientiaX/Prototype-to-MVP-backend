@@ -74,6 +74,45 @@ const userProfileSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Level per archetype (independent progression)
+  level_risk_taker: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 100
+  },
+  level_analyst: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 100
+  },
+  level_builder: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 100
+  },
+  level_strategist: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 100
+  },
+  // XP thresholds for next level (personalized, increases with level)
+  xp_to_next_level: {
+    risk_taker: { type: Number, default: 100 },
+    analyst: { type: Number, default: 100 },
+    builder: { type: Number, default: 100 },
+    strategist: { type: Number, default: 100 }
+  },
+  // Micro-difficulty adjustment (within same level for accuracy)
+  micro_difficulty_offset: {
+    type: Number,
+    default: 0,
+    min: -0.5,
+    max: 0.5
+  },
   total_arenas_completed: {
     type: Number,
     default: 0
@@ -110,7 +149,7 @@ const userProfileSchema = new mongoose.Schema({
   timestamps: true
 });
 
-userProfileSchema.methods.getTotalXP = function() {
+userProfileSchema.methods.getTotalXP = function () {
   return this.xp_risk_taker + this.xp_analyst + this.xp_builder + this.xp_strategist;
 };
 
