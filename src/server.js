@@ -21,7 +21,7 @@ connectDB();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: process.env.CORS_ORIGIN || 'https://prototype-to-mvp-frontend-production.up.railway.app',
   credentials: true
 }));
 app.use(morgan('dev'));
@@ -29,8 +29,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'Prototype to MVP Backend API',
     version: '1.0.0',
     endpoints: {
@@ -46,8 +46,8 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'Prototype to MVP Backend API',
     database: dbStatus,
     timestamp: new Date().toISOString()
@@ -62,7 +62,7 @@ app.use('/api/user', userDataRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Something went wrong!',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
