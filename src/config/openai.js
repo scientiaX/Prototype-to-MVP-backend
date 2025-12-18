@@ -3,17 +3,18 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Qwen DashScope API Configuration
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL || 'https://api.cometapi.com/v1'
+  apiKey: process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY,
+  baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
 });
+
+// Default model for Qwen
+const DEFAULT_MODEL = 'qwen3-max';
 
 // Default model - use env var or fallback based on base URL
 const getDefaultModel = () => {
-  if (process.env.MODEL_NAME) return process.env.MODEL_NAME;
-  // If using Qwen/DashScope, use qwen-plus; otherwise gpt-4o
-  if (process.env.OPENAI_BASE_URL?.includes('dashscope')) return 'qwen-plus';
-  return 'gpt-4o';
+  return process.env.MODEL_NAME || DEFAULT_MODEL;
 };
 
 export const invokeLLM = async ({ prompt, response_json_schema = null, model = getDefaultModel() }) => {
