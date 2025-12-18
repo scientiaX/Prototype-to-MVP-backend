@@ -3,16 +3,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Qwen DashScope API Configuration
+// OpenRouter API Configuration
 const openai = new OpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY,
-  baseURL: process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1'
 });
 
-// Default model for Qwen - using qwen-turbo which is more commonly available
-const DEFAULT_MODEL = 'qwen-turbo';
+// Default model for OpenRouter - using gpt-4o-mini (affordable and capable)
+const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 
-// Default model - use env var or fallback based on base URL
+// Default model - use env var or fallback
 const getDefaultModel = () => {
   return process.env.MODEL_NAME || DEFAULT_MODEL;
 };
