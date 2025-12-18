@@ -8,7 +8,15 @@ const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || 'https://api.cometapi.com/v1'
 });
 
-export const invokeLLM = async ({ prompt, response_json_schema = null, model = 'gpt-4o' }) => {
+// Default model - use env var or fallback based on base URL
+const getDefaultModel = () => {
+  if (process.env.MODEL_NAME) return process.env.MODEL_NAME;
+  // If using Qwen/DashScope, use qwen-plus; otherwise gpt-4o
+  if (process.env.OPENAI_BASE_URL?.includes('dashscope')) return 'qwen-plus';
+  return 'gpt-4o';
+};
+
+export const invokeLLM = async ({ prompt, response_json_schema = null, model = getDefaultModel() }) => {
   try {
     const messages = [
       {
