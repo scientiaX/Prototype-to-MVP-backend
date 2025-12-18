@@ -14,11 +14,31 @@ router.post('/generate', async (req, res) => {
 
     const generatedProblem = await generateProblem(profile, customization);
 
-    const problem = await Problem.create({
+    // Normalize LLM output to match schema requirements
+    const normalizedProblem = {
       ...generatedProblem,
       created_by: user_id,
-      is_active: true
-    });
+      is_active: true,
+      // Normalize enum values to lowercase
+      domain: generatedProblem.domain?.toLowerCase() || 'business',
+      archetype_focus: generatedProblem.archetype_focus?.toLowerCase()?.replace(/\s+/g, '_') || 'strategist'
+    };
+
+    // Map common variations to valid enum values
+    const domainMap = {
+      'business': 'business', 'tech': 'tech', 'technology': 'tech',
+      'creative': 'creative', 'leadership': 'leadership', 'mixed': 'mixed'
+    };
+    const archetypeMap = {
+      'risk_taker': 'risk_taker', 'risktaker': 'risk_taker',
+      'analyst': 'analyst', 'builder': 'builder',
+      'strategist': 'strategist', 'all': 'all'
+    };
+
+    normalizedProblem.domain = domainMap[normalizedProblem.domain] || 'business';
+    normalizedProblem.archetype_focus = archetypeMap[normalizedProblem.archetype_focus] || 'strategist';
+
+    const problem = await Problem.create(normalizedProblem);
 
     res.json(problem);
   } catch (error) {
