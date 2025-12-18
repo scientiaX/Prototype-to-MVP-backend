@@ -9,8 +9,8 @@ const openai = new OpenAI({
   baseURL: process.env.DASHSCOPE_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
 });
 
-// Default model for Qwen
-const DEFAULT_MODEL = 'qwen3-max';
+// Default model for Qwen - using qwen-turbo which is more commonly available
+const DEFAULT_MODEL = 'qwen-turbo';
 
 // Default model - use env var or fallback based on base URL
 const getDefaultModel = () => {
