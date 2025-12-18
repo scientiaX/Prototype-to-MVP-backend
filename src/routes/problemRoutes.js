@@ -13,7 +13,7 @@ router.post('/generate', async (req, res) => {
     }
 
     const generatedProblem = await generateProblem(profile, customization);
-    
+
     const problem = await Problem.create({
       ...generatedProblem,
       created_by: user_id,
@@ -23,16 +23,20 @@ router.post('/generate', async (req, res) => {
     res.json(problem);
   } catch (error) {
     console.error('Generate problem error:', error);
-    res.status(500).json({ error: 'Failed to generate problem' });
+    res.status(500).json({
+      error: 'Failed to generate problem',
+      message: error.message,
+      details: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+    });
   }
 });
 
 router.get('/', async (req, res) => {
   try {
     const { difficulty_min, difficulty_max, is_active = true } = req.query;
-    
+
     const filter = { is_active };
-    
+
     if (difficulty_min || difficulty_max) {
       filter.difficulty = {};
       if (difficulty_min) filter.difficulty.$gte = parseInt(difficulty_min);
@@ -51,7 +55,7 @@ router.get('/', async (req, res) => {
 router.get('/:problem_id', async (req, res) => {
   try {
     const problem = await Problem.findOne({ problem_id: req.params.problem_id });
-    
+
     if (!problem) {
       return res.status(404).json({ error: 'Problem not found' });
     }
