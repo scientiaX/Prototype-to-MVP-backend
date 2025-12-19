@@ -34,11 +34,12 @@ router.post('/question', async (req, res) => {
 });
 
 /**
- * Generate follow-up question based on user response
+ * Generate personalized mentor response based on user's answer
+ * Responses can be: follow-up questions, small explanations, tasks, reflections
  */
 router.post('/follow-up', async (req, res) => {
   try {
-    const { problem_id, user_response, conversation_history = [] } = req.body;
+    const { problem_id, user_response, exchange_count = 1, user_id } = req.body;
 
     if (!problem_id || !user_response) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -49,19 +50,124 @@ router.post('/follow-up', async (req, res) => {
       return res.status(404).json({ error: 'Problem not found' });
     }
 
-    // Generate follow-up using AI
-    const result = await generateFollowUpQuestions(problem, user_response, { conversation_history });
+    // Get user profile for personalization
+    const profile = user_id ? await UserProfile.findOne({ user_id }) : null;
 
-    // Get the first question from the result
-    const question = result?.questions?.[0]?.question ||
-      "Menarik. Bisa jelaskan lebih detail tentang reasoning-mu untuk keputusan ini?";
+    // Determine response type based on exchange count and user behavior
+    let responseType = 'follow_up';
+    if (exchange_count >= 3) {
+      responseType = 'stress_test';
+    }
 
-    res.json({ question });
+    // Build personalized mentor prompt
+    const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType);
+
+    // Generate response using OpenAI
+    const openai = (await import('../config/openai.js')).default;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: mentorPrompt.system },
+        { role: 'user', content: mentorPrompt.user }
+      ],
+      temperature: 0.8,
+      max_tokens: 300
+    });
+
+    const response = completion.choices[0]?.message?.content?.trim();
+
+    // Check if mentor decides to conclude (after minimum exchanges)
+    const shouldConclude = exchange_count >= 4 && response?.toLowerCase().includes('[selesai]');
+
+    res.json({
+      question: response?.replace('[selesai]', '').trim() || "Bisa ceritakan lebih lanjut tentang alasanmu?",
+      type: responseType,
+      should_conclude: shouldConclude
+    });
   } catch (error) {
     console.error('Follow-up generation error:', error);
-    res.status(500).json({ error: 'Failed to generate follow-up' });
+    // Personalized fallback based on exchange count
+    const fallbacks = [
+      "Oke, menarik. Tapi apa yang membuatmu yakin dengan pilihan ini?",
+      "Hmm, saya lihat alasanmu. Tapi bagaimana kalau ternyata asumsimu salah?",
+      "Coba bayangkan kamu adalah stakeholder yang paling dirugikan. Apa reaksimu?",
+      "Sebelum lanjut - apa satu hal yang masih bikin kamu ragu?"
+    ];
+    res.json({
+      question: fallbacks[(req.body.exchange_count || 0) % fallbacks.length],
+      type: 'follow_up'
+    });
   }
 });
+
+/**
+ * Build personalized mentor prompt based on archetype and behavior
+ */
+function buildMentorPrompt(problem, userResponse, profile, exchangeCount, responseType) {
+  const archetype = profile?.primary_archetype || 'analyst';
+  const thinkingStyle = profile?.thinking_style || 'explorative';
+  const language = profile?.language || 'id';
+
+  // Archetype-specific mentoring style
+  const archetypeStyles = {
+    risk_taker: {
+      style: 'langsung, to the point, menantang',
+      focus: 'risiko, speed, keberanian, trade-off',
+      challenge: 'terlalu cepat tanpa pertimbangan'
+    },
+    analyst: {
+      style: 'detail, sistematis, data-driven',
+      focus: 'data, evidence, analisis, implikasi',
+      challenge: 'overthinking, takut bertindak'
+    },
+    builder: {
+      style: 'praktis, action-oriented, konkret',
+      focus: 'eksekusi, langkah nyata, resource',
+      challenge: 'skip planning, terlalu fokus doing'
+    },
+    strategist: {
+      style: 'big picture, jangka panjang, multi-stakeholder',
+      focus: 'visi, alignment, positioning',
+      challenge: 'terlalu abstrak, kurang grounded'
+    }
+  };
+
+  const style = archetypeStyles[archetype] || archetypeStyles.analyst;
+
+  const systemPrompt = `Kamu adalah mentor bisnis yang ${style.style}. Kamu sedang memandu user dalam menyelesaikan masalah nyata.
+
+ATURAN PENTING:
+1. JANGAN gunakan kata-kata sulit seperti "reasoning", "trade-off". Gunakan: alasan, untung-rugi, pertimbangan
+2. Responmu bisa berupa: pertanyaan lanjutan, penjelasan singkat, tugas kecil, atau refleksi
+3. Bicara seperti mentor yang peduli, bukan chatbot
+4. Fokus pada: ${style.focus}
+5. Waspadai kelemahan archetype ini: ${style.challenge}
+6. Maksimal 2-3 kalimat
+7. Bahasa Indonesia yang natural dan sederhana
+
+TIPE RESPONMU:
+- Exchange 1-2: Gali lebih dalam, minta klarifikasi, pecah jadi sub-masalah
+- Exchange 3+: Beri tekanan, stress test, challenge asumsi
+- Jika sudah cukup (4+ exchange dan user konsisten), tambahkan [selesai] di akhir
+
+JANGAN:
+- Bilang "menarik" atau "bagus" berlebihan
+- Gunakan template yang terasa bot
+- Tanya hal yang sudah dijawab
+- Beri jawaban langsung`;
+
+  const userPrompt = `MASALAH:
+${problem.title}
+${problem.context}
+
+JAWABAN USER (exchange ke-${exchangeCount}):
+"${userResponse}"
+
+Beri respon mentor yang ${responseType === 'stress_test' ? 'menantang dan stress-test' : 'menggali lebih dalam'}:`;
+
+  return { system: systemPrompt, user: userPrompt };
+}
+
 
 /**
  * Generate stress-test question
