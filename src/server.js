@@ -105,8 +105,18 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
+// Create HTTP server for both Express and WebSocket
+import { createServer } from 'http';
+import { initWebSocketServer } from './services/websocketService.js';
+
+const server = createServer(app);
+
+// Initialize WebSocket
+initWebSocketServer(server);
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket available at ws://localhost:${PORT}/ws/arena`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
