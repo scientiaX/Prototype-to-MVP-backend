@@ -40,7 +40,7 @@ cp .env.example .env
 
 3. Update `.env` dengan credentials Anda:
 ```env
-OPENAI_API_KEY=sk-your-comet-api-key
+OPENAI_API_KEY=sk-your-open route- api-key
 MONGODB_URI=mongodb://localhost:27017/prototype-mvp
 JWT_SECRET=your-secure-secret-here
 ```
