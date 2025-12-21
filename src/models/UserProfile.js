@@ -129,27 +129,27 @@ const userProfileSchema = new mongoose.Schema({
   },
   domain: {
     type: String,
-    enum: ['business', 'tech', 'creative', 'leadership', 'academic', 'gaming', 'social']
+    enum: ['business', 'tech', 'creative', 'leadership', 'academic', 'gaming', 'social', 'explore', 'finance', 'science', 'product']
   },
   aspiration: {
     type: String,
-    enum: ['founder', 'expert', 'leader', 'innovator', 'top_student', 'creator', 'college']
+    enum: ['founder', 'expert', 'leader', 'innovator', 'top_student', 'creator', 'college', 'athlete', 'artist', 'investor', 'freelancer', 'cxo', 'acquirer']
   },
   thinking_style: {
     type: String,
-    enum: ['fast', 'accurate', 'explorative']
+    enum: ['fast', 'accurate', 'explorative', 'collaborative', 'creative', 'systematic', 'intuitive']
   },
   last_stuck_experience: {
     type: String,
-    enum: ['decision', 'execution', 'direction', 'resource']
+    enum: ['decision', 'execution', 'direction', 'resource', 'confidence', 'motivation', 'perfectionism', 'overwhelm', 'scaling', 'delegation']
   },
   avoided_risk: {
     type: String,
-    enum: ['financial', 'reputation', 'time', 'relationship', 'grades', 'social', 'disappoint', 'academic']
+    enum: ['financial', 'reputation', 'time', 'relationship', 'grades', 'social', 'disappoint', 'academic', 'opportunity', 'disappointment', 'career', 'health']
   },
   common_regret: {
     type: String,
-    enum: ['too_slow', 'too_reckless']
+    enum: ['too_slow', 'too_reckless', 'too_safe']
   }
 }, {
   timestamps: true
