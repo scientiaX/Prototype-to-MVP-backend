@@ -273,4 +273,88 @@ router.get('/metrics/:session_id', async (req, res) => {
   }
 });
 
+// ==========================================
+// ENTRY FLOW ENDPOINTS (First 3 Minutes High-Impact)
+// ==========================================
+
+/**
+ * Generate forced choice options for entry flow
+ * Based on arena_first_3_minutes_high_impact_entry_design.md
+ */
+router.post('/entry/generate-choices', async (req, res) => {
+  try {
+    const { problem_id, user_id, context, objective } = req.body;
+
+    if (!problem_id) {
+      return res.status(400).json({ error: 'Problem ID required' });
+    }
+
+    const problem = await Problem.findOne({ problem_id });
+    if (!problem) {
+      return res.status(404).json({ error: 'Problem not found' });
+    }
+
+    // Import AI service for generating choices
+    const { generateEntryFlowChoices } = await import('../services/aiService.js');
+
+    const result = await generateEntryFlowChoices(problem, context || problem.context, objective || problem.objective);
+
+    res.json({
+      choices: result.choices || [
+        { id: 'aggressive', text: 'Ambil langkah agresif', icon: '🔥', hint: 'Risiko tinggi, reward potensial tinggi' },
+        { id: 'conservative', text: 'Pertahankan posisi aman', icon: '🛡️', hint: 'Lebih aman tapi lambat' },
+        { id: 'collaborative', text: 'Cari bantuan eksternal', icon: '🤝', hint: 'Butuh networking dan trust' }
+      ],
+      reflection_question: result.reflection_question || `Kenapa kamu memilih opsi tersebut?`
+    });
+  } catch (error) {
+    console.error('Generate choices error:', error);
+    // Return default choices on error
+    res.json({
+      choices: [
+        { id: 'aggressive', text: 'Ambil langkah agresif', icon: '🔥', hint: 'Risiko tinggi, reward potensial tinggi' },
+        { id: 'conservative', text: 'Pertahankan posisi aman', icon: '🛡️', hint: 'Lebih aman tapi lambat' },
+        { id: 'collaborative', text: 'Cari bantuan eksternal', icon: '🤝', hint: 'Butuh networking dan trust' }
+      ],
+      reflection_question: 'Kenapa kamu memilih opsi tersebut?'
+    });
+  }
+});
+
+/**
+ * Generate consequence based on user's choice
+ * Creates the "tamparan" moment - realizing choice has cost
+ */
+router.post('/entry/generate-consequence', async (req, res) => {
+  try {
+    const { problem_id, choice_id, choice_text, user_id, context } = req.body;
+
+    if (!problem_id || !choice_id) {
+      return res.status(400).json({ error: 'Problem ID and Choice ID required' });
+    }
+
+    const problem = await Problem.findOne({ problem_id });
+    if (!problem) {
+      return res.status(404).json({ error: 'Problem not found' });
+    }
+
+    // Import AI service for generating consequences
+    const { generateEntryFlowConsequence } = await import('../services/aiService.js');
+
+    const result = await generateEntryFlowConsequence(problem, choice_id, choice_text, context || problem.context);
+
+    res.json({
+      consequences: result.consequences || ['Keputusanmu memiliki dampak yang akan terlihat nanti.'],
+      insight: result.insight || 'Setiap keputusan punya biaya.'
+    });
+  } catch (error) {
+    console.error('Generate consequence error:', error);
+    // Return default consequence on error
+    res.json({
+      consequences: ['Keputusanmu akan membawa perubahan signifikan.', 'Ada trade-off yang harus kamu hadapi.'],
+      insight: 'Setiap keputusan punya biaya.'
+    });
+  }
+});
+
 export default router;

@@ -488,6 +488,142 @@ Output hanya pertanyaan dalam Bahasa Indonesia.`;
   return response;
 };
 
+// ==========================================
+// ENTRY FLOW AI FUNCTIONS
+// Based on arena_first_3_minutes_high_impact_entry_design.md
+// ==========================================
+
+/**
+ * Generate forced choice options for the entry flow
+ * Creates 2-3 concrete options that all seem reasonable but have different trade-offs
+ */
+export const generateEntryFlowChoices = async (problem, context, objective) => {
+  const prompt = `Kamu adalah designer UX untuk arena problem-solving. User baru masuk dan perlu membuat keputusan cepat.
+
+PROBLEM:
+${problem.title}
+
+CONTEXT:
+${context}
+
+OBJECTIVE:
+${objective}
+
+Generate 3 pilihan aksi yang:
+1. Semua tampak masuk akal
+2. Tidak ada yang "100% aman" atau "100% berisiko"
+3. Masing-masing punya trade-off yang berbeda
+4. Konkret dan actionable (bukan abstrak)
+5. Bisa dipilih dalam 15-25 detik tanpa overthinking
+
+CRITICAL: Ini untuk 3 menit pertama arena - user harus merasa langsung masuk aksi, bukan analisis.
+
+Icons yang available: 🔥 (aggressive/bold), 🛡️ (defensive/safe), 🤝 (collaborative), ⚡ (quick/decisive), 💡 (creative/innovative), 📊 (data-driven), 🎯 (focused), 🌱 (growth), 💰 (financial)
+
+Buat juga 1 pertanyaan refleksi yang akan ditanyakan SETELAH user memilih. Pertanyaan ini harus spesifik tentang pilihan yang dibuat.
+
+Output dalam Bahasa Indonesia.`;
+
+  try {
+    const response = await invokeLLM({
+      prompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          choices: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                text: { type: "string" },
+                icon: { type: "string" },
+                hint: { type: "string" }
+              },
+              required: ["id", "text", "icon", "hint"]
+            }
+          },
+          reflection_question: { type: "string" }
+        },
+        required: ["choices", "reflection_question"]
+      }
+    });
+
+    return response;
+  } catch (error) {
+    console.error('generateEntryFlowChoices error:', error);
+    return {
+      choices: [
+        { id: 'aggressive', text: 'Ambil langkah agresif', icon: '🔥', hint: 'Risiko tinggi, reward potensial tinggi' },
+        { id: 'conservative', text: 'Pertahankan posisi aman', icon: '🛡️', hint: 'Lebih aman tapi lambat' },
+        { id: 'collaborative', text: 'Cari bantuan eksternal', icon: '🤝', hint: 'Butuh networking dan trust' }
+      ],
+      reflection_question: 'Kenapa kamu memilih opsi tersebut?'
+    };
+  }
+};
+
+/**
+ * Generate consequence based on user's choice
+ * Creates the "tamparan" moment - user realizes their choice has a cost
+ */
+export const generateEntryFlowConsequence = async (problem, choiceId, choiceText, context) => {
+  const prompt = `User baru membuat keputusan di arena. Generate konsekuensi yang membuat user menyadari bahwa keputusan mereka punya biaya.
+
+PROBLEM:
+${problem.title}
+
+CONTEXT:
+${context}
+
+OBJECTIVE:
+${problem.objective}
+
+KEPUTUSAN USER:
+${choiceText}
+
+Generate 2 konsekuensi yang:
+1. REALISTIS - bisa terjadi di dunia nyata
+2. IMMEDIATE - langsung terasa, bukan "suatu hari nanti"
+3. PAINFUL - ada sesuatu yang hilang atau terkompromi
+4. SPESIFIK - bukan generik seperti "ada risiko"
+5. CONNECTED - berhubungan langsung dengan pilihan yang dibuat
+
+CRITICAL: Ini adalah "tamparan pertama" - user harus menyadari bahwa setiap keputusan punya biaya. Jangan terlalu sadis, tapi jangan juga terlalu lembut.
+
+Juga generate 1 insight singkat (1 kalimat) yang menyimpulkan pembelajaran dari konsekuensi ini.
+
+Output dalam Bahasa Indonesia.`;
+
+  try {
+    const response = await invokeLLM({
+      prompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          consequences: {
+            type: "array",
+            items: { type: "string" }
+          },
+          insight: { type: "string" }
+        },
+        required: ["consequences", "insight"]
+      }
+    });
+
+    return response;
+  } catch (error) {
+    console.error('generateEntryFlowConsequence error:', error);
+    return {
+      consequences: [
+        'Keputusanmu membawa dampak yang tidak terduga.',
+        'Ada pihak yang tidak setuju dengan arah yang kamu pilih.'
+      ],
+      insight: 'Setiap keputusan punya biaya yang harus dibayar.'
+    };
+  }
+};
+
 export default {
   generateProblem,
   generatePersonalizedProblem,
@@ -495,6 +631,8 @@ export default {
   generateXPFromCharacteristics,
   generateFollowUpQuestions,
   generateSocraticQuestion,
+  generateEntryFlowChoices,
+  generateEntryFlowConsequence,
   identifyWeakArchetypes,
   identifyStrongArchetypes
 };
