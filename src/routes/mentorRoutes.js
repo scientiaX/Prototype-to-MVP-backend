@@ -39,7 +39,7 @@ router.post('/question', async (req, res) => {
  */
 router.post('/follow-up', async (req, res) => {
   try {
-    const { problem_id, user_response, exchange_count = 1, user_id } = req.body;
+    const { problem_id, user_response, exchange_count = 1, user_id, visual_state = 'calm' } = req.body;
 
     if (!problem_id || !user_response) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -59,8 +59,8 @@ router.post('/follow-up', async (req, res) => {
       responseType = 'stress_test';
     }
 
-    // Build personalized mentor prompt
-    const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType);
+    // Build personalized mentor prompt with visual state tone
+    const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
 
     // Generate response using OpenAI
     const openai = (await import('../config/openai.js')).default;
@@ -101,9 +101,10 @@ router.post('/follow-up', async (req, res) => {
 });
 
 /**
- * Build personalized mentor prompt based on archetype and behavior
+ * Build personalized mentor prompt based on archetype, behavior, and visual state
+ * Visual states: calm, focused, urgent, critical
  */
-function buildMentorPrompt(problem, userResponse, profile, exchangeCount, responseType) {
+function buildMentorPrompt(problem, userResponse, profile, exchangeCount, responseType, visualState = 'calm') {
   const archetype = profile?.primary_archetype || 'analyst';
   const thinkingStyle = profile?.thinking_style || 'explorative';
   const language = profile?.language || 'id';
@@ -112,7 +113,7 @@ function buildMentorPrompt(problem, userResponse, profile, exchangeCount, respon
   const archetypeStyles = {
     risk_taker: {
       style: 'langsung, to the point, menantang',
-      focus: 'risiko, speed, keberanian, trade-off',
+      focus: 'risiko, speed, keberanian, untung-rugi',
       challenge: 'terlalu cepat tanpa pertimbangan'
     },
     analyst: {
@@ -132,18 +133,51 @@ function buildMentorPrompt(problem, userResponse, profile, exchangeCount, respon
     }
   };
 
-  const style = archetypeStyles[archetype] || archetypeStyles.analyst;
+  // Visual state tone mapping from Experience Layer
+  const visualStateTones = {
+    calm: {
+      style: 'reflektif dan tenang',
+      instruction: 'Bicara dengan sabar, beri ruang berpikir',
+      examples: ['Menarik, coba pikirkan...', 'Apa yang jadi pertimbanganmu?']
+    },
+    focused: {
+      style: 'langsung dan jelas',
+      instruction: 'Fokus pada pertanyaan inti, tidak bertele-tele',
+      examples: ['Apa keputusanmu?', 'Langkah konkretnya?']
+    },
+    urgent: {
+      style: 'singkat dan tegas',
+      instruction: 'Maksimal 1-2 kalimat. Tekan untuk segera memutuskan.',
+      examples: ['Putuskan sekarang.', 'Waktu terbatas.']
+    },
+    critical: {
+      style: 'sangat tegas dan final',
+      instruction: 'Paling singkat mungkin. Ini kesempatan terakhir.',
+      examples: ['Waktu habis. Kunci.', 'Final.']
+    }
+  };
 
-  const systemPrompt = `Kamu adalah mentor bisnis yang ${style.style}. Kamu sedang memandu user dalam menyelesaikan masalah nyata.
+  const archetypeStyle = archetypeStyles[archetype] || archetypeStyles.analyst;
+  const toneStyle = visualStateTones[visualState] || visualStateTones.calm;
+
+  const systemPrompt = `Kamu adalah mentor bisnis yang ${archetypeStyle.style}. 
+
+TONE SAAT INI: ${toneStyle.style}
+${toneStyle.instruction}
 
 ATURAN PENTING:
 1. JANGAN gunakan kata-kata sulit seperti "reasoning", "trade-off". Gunakan: alasan, untung-rugi, pertimbangan
 2. Responmu bisa berupa: pertanyaan lanjutan, penjelasan singkat, tugas kecil, atau refleksi
 3. Bicara seperti mentor yang peduli, bukan chatbot
-4. Fokus pada: ${style.focus}
-5. Waspadai kelemahan archetype ini: ${style.challenge}
-6. Maksimal 2-3 kalimat
-7. Bahasa Indonesia yang natural dan sederhana
+4. Fokus pada: ${archetypeStyle.focus}
+5. Waspadai kelemahan archetype ini: ${archetypeStyle.challenge}
+6. Bahasa Indonesia yang natural dan sederhana
+7. Contoh tone: "${toneStyle.examples[0]}"
+
+JUMLAH KALIMAT BERDASARKAN KONDISI:
+- Calm/Focused: 2-3 kalimat
+- Urgent: 1-2 kalimat
+- Critical: 1 kalimat saja
 
 TIPE RESPONMU:
 - Exchange 1-2: Gali lebih dalam, minta klarifikasi, pecah jadi sub-masalah
@@ -163,10 +197,11 @@ ${problem.context}
 JAWABAN USER (exchange ke-${exchangeCount}):
 "${userResponse}"
 
-Beri respon mentor yang ${responseType === 'stress_test' ? 'menantang dan stress-test' : 'menggali lebih dalam'}:`;
+Beri respon mentor dengan tone ${toneStyle.style}:`;
 
   return { system: systemPrompt, user: userPrompt };
 }
+
 
 
 /**
