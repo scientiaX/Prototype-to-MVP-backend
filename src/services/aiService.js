@@ -78,14 +78,35 @@ export const generatePersonalizedProblem = async (profile, sessionHistory = null
   const weakArchetypes = identifyWeakArchetypes(profile);
   const strongArchetypes = identifyStrongArchetypes(profile);
 
-  // Calculate effective difficulty
+  // Calculate effective difficulty with experience adjustment
   const baseDifficulty = profile.current_difficulty || 1;
   const microOffset = profile.micro_difficulty_offset || 0;
-  const effectiveDifficulty = Math.max(1, Math.min(10, baseDifficulty + microOffset));
+
+  // Adjust difficulty based on experience level
+  const experienceLevelMap = {
+    'curious': -1,
+    'beginner': -0.5,
+    'learning': 0,
+    'intermediate': 0.5,
+    'advanced': 1,
+    'expert': 1.5
+  };
+  const experienceAdjustment = experienceLevelMap[profile.experience_level] || 0;
+  const effectiveDifficulty = Math.max(1, Math.min(10, baseDifficulty + microOffset + experienceAdjustment));
+
+  // Age-specific language guidance
+  const ageGuidance = {
+    'smp': 'Use casual, friendly language. Scenarios should be relatable to teens (12-15). Avoid complex business jargon. Focus on school projects, content creation, small ventures, gaming etc.',
+    'sma': 'Use moderately professional language. Scenarios can involve early business, content creation, college prep, freelance etc. Mix casual and professional.',
+    'adult': 'Use professional language. Full business/tech scenarios with real stakes, team management, investment decisions etc.'
+  };
 
   const prompt = `Generate a personalized problem-solving challenge.
 
 USER PROFILE:
+- Age group: ${profile.age_group || 'adult'} (${ageGuidance[profile.age_group] || ageGuidance['adult']})
+- Experience level: ${profile.experience_level || 'beginner'}
+- Experience proof: "${profile.experience_proof || 'No specific proof provided'}"
 - Primary archetype: ${profile.primary_archetype}
 - Domain: ${profile.domain || 'business'}
 - Risk appetite: ${profile.risk_appetite || 0.5}/1
@@ -97,7 +118,7 @@ USER PROFILE:
 PERSONALIZATION TARGETS:
 - TRAIN (weak areas): ${weakArchetypes.join(', ') || 'none'}
 - SHARPEN (strong areas): ${strongArchetypes.join(', ') || 'none'}
-- Effective difficulty: ${effectiveDifficulty.toFixed(1)} (${baseDifficulty} + micro adjustment ${microOffset.toFixed(2)})
+- Effective difficulty: ${effectiveDifficulty.toFixed(1)} (base ${baseDifficulty} + experience ${experienceAdjustment} + micro ${microOffset.toFixed(2)})
 
 ARCHETYPE TRAINING GUIDE:
 - risk_taker: Include high-stakes decisions with incomplete information, time pressure
@@ -105,19 +126,21 @@ ARCHETYPE TRAINING GUIDE:
 - builder: Include execution-focused scenarios with resource constraints
 - strategist: Include long-term planning with multiple stakeholder perspectives
 
-ROLE OPTIONS (pick one that fits the problem):
-ceo, product_manager, engineer, designer, founder, consultant, investor, operations, team_lead, analyst
+ROLE OPTIONS (pick one that fits the problem AND user's age group):
+ceo, product_manager, engineer, designer, founder, consultant, investor, operations, team_lead, analyst, content_creator, project_lead
 
 Create a REAL-WORLD problem that:
-1. Has incomplete data (require user to make assumptions)
-2. Requires decisive action (not just analysis)
-3. Has clear trade-offs that hurt
-4. Cannot be solved with a "safe" answer
-5. Subtly requires skills from the TRAIN archetypes
-6. Allows user to leverage SHARPEN archetypes
-7. Is challenging but achievable for someone at this difficulty level
+1. MATCHES the user's age group and experience level
+2. References their specific domain and experience proof when relevant
+3. Has incomplete data (require user to make assumptions)
+4. Requires decisive action (not just analysis)
+5. Has clear trade-offs that hurt
+6. Cannot be solved with a "safe" answer
+7. Subtly requires skills from the TRAIN archetypes
+8. Allows user to leverage SHARPEN archetypes
+9. Is challenging but achievable for someone at this difficulty and experience level
 
-CRITICAL: This platform confronts users with hard choices. Don't soften the problem. Make it realistic and uncomfortable.
+CRITICAL: This platform confronts users with hard choices. Don't soften the problem. Make it realistic and uncomfortable for their level.
 
 Respond in Indonesian. Generate unique problem_id with format "PROB-{timestamp}".`;
 

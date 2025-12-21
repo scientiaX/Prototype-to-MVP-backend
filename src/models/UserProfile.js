@@ -150,6 +150,16 @@ const userProfileSchema = new mongoose.Schema({
   common_regret: {
     type: String,
     enum: ['too_slow', 'too_reckless', 'too_safe']
+  },
+  // Experience level from onboarding
+  experience_level: {
+    type: String,
+    enum: ['curious', 'beginner', 'learning', 'intermediate', 'advanced', 'expert']
+  },
+  // User's proof/achievements for their experience
+  experience_proof: {
+    type: String,
+    maxLength: 1000
   }
 }, {
   timestamps: true
