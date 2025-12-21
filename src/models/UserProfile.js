@@ -121,13 +121,19 @@ const userProfileSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Age group for personalized experience
+  age_group: {
+    type: String,
+    enum: ['smp', 'sma', 'adult'],
+    default: 'adult'
+  },
   domain: {
     type: String,
-    enum: ['business', 'tech', 'creative', 'leadership']
+    enum: ['business', 'tech', 'creative', 'leadership', 'academic', 'gaming', 'social']
   },
   aspiration: {
     type: String,
-    enum: ['founder', 'expert', 'leader', 'innovator']
+    enum: ['founder', 'expert', 'leader', 'innovator', 'top_student', 'creator', 'college']
   },
   thinking_style: {
     type: String,
@@ -139,7 +145,7 @@ const userProfileSchema = new mongoose.Schema({
   },
   avoided_risk: {
     type: String,
-    enum: ['financial', 'reputation', 'time', 'relationship']
+    enum: ['financial', 'reputation', 'time', 'relationship', 'grades', 'social', 'disappoint', 'academic']
   },
   common_regret: {
     type: String,
