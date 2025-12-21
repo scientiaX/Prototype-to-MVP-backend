@@ -53,14 +53,23 @@ router.post('/generate', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const { difficulty_min, difficulty_max, is_active = true } = req.query;
+    const { difficulty_min, difficulty_max, is_active = true, user_id } = req.query;
 
-    const filter = { is_active };
+    const filter = { is_active: is_active === 'true' || is_active === true };
 
     if (difficulty_min || difficulty_max) {
       filter.difficulty = {};
       if (difficulty_min) filter.difficulty.$gte = parseInt(difficulty_min);
       if (difficulty_max) filter.difficulty.$lte = parseInt(difficulty_max);
+    }
+
+    // Filter problems: show only user's personalized problems OR global (no generated_for_user)
+    if (user_id) {
+      filter.$or = [
+        { generated_for_user: user_id },
+        { generated_for_user: { $exists: false } },
+        { generated_for_user: null }
+      ];
     }
 
     const problems = await Problem.find(filter).sort({ createdAt: -1 });
