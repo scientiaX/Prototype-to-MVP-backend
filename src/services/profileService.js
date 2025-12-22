@@ -21,18 +21,50 @@ export const calculateProfile = (answers) => {
     risk_appetite += 0.15;
   }
 
+  // Avoided risk affects profile
   if (answers.avoided_risk === 'financial') {
     risk_appetite -= 0.1;
   } else if (answers.avoided_risk === 'reputation') {
     ambiguity_tolerance -= 0.1;
   } else if (answers.avoided_risk === 'time') {
     decision_speed += 0.1;
+  } else if (answers.avoided_risk === 'opportunity') {
+    risk_appetite += 0.05;
+    decision_speed += 0.05;
+  } else if (answers.avoided_risk === 'career') {
+    ambiguity_tolerance -= 0.05;
+    risk_appetite -= 0.05;
+  } else if (answers.avoided_risk === 'disappointment') {
+    experience_depth += 0.1;
+  } else if (answers.avoided_risk === 'health') {
+    decision_speed -= 0.1;
   }
 
-  if (answers.aspiration === 'expert') {
+  // Aspiration affects profile
+  if (answers.aspiration === 'expert' || answers.aspiration === 'cto') {
     experience_depth = 0.7;
-  } else if (answers.aspiration === 'founder') {
+  } else if (answers.aspiration === 'founder' || answers.aspiration === 'ceo') {
     risk_appetite += 0.1;
+  } else if (answers.aspiration === 'investor') {
+    risk_appetite += 0.15;
+    ambiguity_tolerance += 0.1;
+  } else if (answers.aspiration === 'freelancer') {
+    risk_appetite += 0.05;
+    decision_speed += 0.1;
+  } else if (answers.aspiration === 'product_lead') {
+    decision_speed += 0.1;
+    experience_depth += 0.05;
+  } else if (answers.aspiration === 'creator' || answers.aspiration === 'artist') {
+    ambiguity_tolerance += 0.1;
+  } else if (answers.aspiration === 'leader' || answers.aspiration === 'cxo') {
+    experience_depth += 0.1;
+    ambiguity_tolerance += 0.05;
+  } else if (answers.aspiration === 'strategist') {
+    ambiguity_tolerance += 0.15;
+    experience_depth += 0.1;
+  } else if (answers.aspiration === 'innovator') {
+    ambiguity_tolerance += 0.1;
+    risk_appetite += 0.05;
   }
 
   risk_appetite = Math.max(0.1, Math.min(0.9, risk_appetite));

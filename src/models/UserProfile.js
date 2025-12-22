@@ -133,7 +133,7 @@ const userProfileSchema = new mongoose.Schema({
   },
   aspiration: {
     type: String,
-    enum: ['founder', 'expert', 'leader', 'innovator', 'top_student', 'creator', 'college', 'athlete', 'artist', 'investor', 'freelancer', 'cxo', 'acquirer']
+    enum: ['founder', 'expert', 'leader', 'innovator', 'ceo', 'investor', 'freelancer', 'product_lead', 'cto', 'creator', 'artist', 'strategist', 'cxo']
   },
   thinking_style: {
     type: String,
@@ -141,11 +141,11 @@ const userProfileSchema = new mongoose.Schema({
   },
   last_stuck_experience: {
     type: String,
-    enum: ['decision', 'execution', 'direction', 'resource', 'confidence', 'motivation', 'perfectionism', 'overwhelm', 'scaling', 'delegation']
+    enum: ['decision', 'execution', 'direction', 'resource', 'scaling', 'delegation', 'perfectionism', 'overwhelm', 'confidence', 'motivation']
   },
   avoided_risk: {
     type: String,
-    enum: ['financial', 'reputation', 'time', 'relationship', 'grades', 'social', 'disappoint', 'academic', 'opportunity', 'disappointment', 'career', 'health']
+    enum: ['financial', 'reputation', 'time', 'relationship', 'opportunity', 'career', 'disappointment', 'health']
   },
   common_regret: {
     type: String,
