@@ -12,10 +12,14 @@ const userProfileSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  name: {
+    type: String,
+    default: ''
+  },
   language: {
     type: String,
     enum: ['en', 'id'],
-    default: 'id'
+    default: 'en'
   },
   risk_appetite: {
     type: Number,

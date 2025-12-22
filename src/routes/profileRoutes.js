@@ -1,30 +1,40 @@
 import express from 'express';
 import UserProfile from '../models/UserProfile.js';
+import User from '../models/User.js';
 import { calculateProfile } from '../services/profileService.js';
 
 const router = express.Router();
 
 router.post('/calibrate', async (req, res) => {
   try {
-    const { user_id, email, answers, language } = req.body;
+    const { user_id, email, answers, language, name } = req.body;
 
     if (!user_id || !email || !answers) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const calculatedProfile = calculateProfile(answers);
-    
+
+    // Get user's name if not provided in request
+    let userName = name || '';
+    if (!userName) {
+      const user = await User.findOne({ email: email.toLowerCase() });
+      userName = user?.name || '';
+    }
+
     let profile = await UserProfile.findOne({ user_id });
-    
+
     if (profile) {
       Object.assign(profile, calculatedProfile);
-      profile.language = language || 'id';
+      profile.language = language || 'en';
+      profile.name = userName || profile.name;
       await profile.save();
     } else {
       profile = await UserProfile.create({
         user_id,
         email,
-        language: language || 'id',
+        name: userName,
+        language: language || 'en',
         ...calculatedProfile
       });
     }
@@ -39,7 +49,7 @@ router.post('/calibrate', async (req, res) => {
 router.get('/:user_id', async (req, res) => {
   try {
     const profile = await UserProfile.findOne({ user_id: req.params.user_id });
-    
+
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
     }
@@ -58,7 +68,7 @@ router.put('/:user_id', async (req, res) => {
       req.body,
       { new: true, runValidators: true }
     );
-    
+
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
     }

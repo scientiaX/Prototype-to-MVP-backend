@@ -11,6 +11,7 @@ import problemRoutes from './routes/problemRoutes.js';
 import arenaRoutes from './routes/arenaRoutes.js';
 import mentorRoutes from './routes/mentorRoutes.js';
 import userDataRoutes from './routes/userDataRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 dotenv.config();
 
@@ -68,6 +69,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
+      auth: '/api/auth',
       profiles: '/api/profiles',
       problems: '/api/problems',
       arena: '/api/arena',
@@ -87,6 +89,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.use('/api/auth', authRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/problems', problemRoutes);
 app.use('/api/arena', arenaRoutes);
