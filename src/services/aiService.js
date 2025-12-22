@@ -16,6 +16,17 @@ import { invokeLLM } from '../config/openai.js';
 // ==========================================
 
 /**
+ * Get language instruction for AI prompts
+ */
+const getLanguageInstruction = (profile) => {
+  const lang = profile?.language || 'en';
+  if (lang === 'id') {
+    return 'Respond in Indonesian (Bahasa Indonesia).';
+  }
+  return 'Respond in English.';
+};
+
+/**
  * Identify weak archetypes from profile (for training)
  */
 const identifyWeakArchetypes = (profile) => {
@@ -142,7 +153,7 @@ Create a REAL-WORLD problem that:
 
 CRITICAL: This platform confronts users with hard choices. Don't soften the problem. Make it realistic and uncomfortable for their level.
 
-Respond in Indonesian. Generate unique problem_id with format "PROB-{timestamp}".`;
+${getLanguageInstruction(profile)} Generate unique problem_id with format "PROB-{timestamp}".`;
 
   const response = await invokeLLM({
     prompt,
@@ -225,7 +236,7 @@ ROLE OPTIONS: ceo, product_manager, engineer, designer, founder, consultant, inv
 
 CRITICAL: This is for a platform that confronts users with hard choices. Don't soften the problem. Make it realistic and uncomfortable.
 
-Respond in Indonesian.`;
+${getLanguageInstruction(profile)}`;
 
   const response = await invokeLLM({
     prompt,
@@ -254,7 +265,7 @@ Respond in Indonesian.`;
 // ENHANCED SOLUTION EVALUATION
 // ==========================================
 
-export const evaluateSolution = async (problem, solution, timeElapsed, sessionMetrics = null) => {
+export const evaluateSolution = async (problem, solution, timeElapsed, sessionMetrics = null, profile = null) => {
   // Build metrics context if available
   let metricsContext = '';
   if (sessionMetrics) {
@@ -267,9 +278,9 @@ RESPONSE METRICS:
 `;
   }
 
-  const evaluationPrompt = `Kamu adalah mentor yang menguji keputusan. Evaluasi solusi berikut:
+  const evaluationPrompt = `${profile?.language === 'en' ? 'You are a mentor testing decisions. Evaluate the following solution:' : 'Kamu adalah mentor yang menguji keputusan. Evaluasi solusi berikut:'}
 
-MASALAH:
+${profile?.language === 'en' ? 'PROBLEM:' : 'MASALAH:'}
 ${problem.title}
 ${problem.context}
 
@@ -306,7 +317,9 @@ XP ASSIGNMENT RULES:
 - Quality/level respon menentukan JUMLAH XP (0-20 per archetype)
 - Jika respon stagnan (tidak ada improvement), semua XP bisa = 0
 
-Berikan evaluasi yang konfrontatif, bukan memuji.`;
+${profile?.language === 'en' ? 'Give a confrontational evaluation, not praise.' : 'Berikan evaluasi yang konfrontatif, bukan memuji.'}
+
+${getLanguageInstruction(profile)}`;
 
   const evaluation = await invokeLLM({
     prompt: evaluationPrompt,
@@ -417,7 +430,7 @@ Contoh kategori:
 - "Apa plan B kalau asumsi utamamu salah?"
 - "Siapa yang akan paling keberatan dengan keputusan ini?"
 
-Respond dalam Bahasa Indonesia.`;
+${getLanguageInstruction({ language: 'id' })}`;
 
   const response = await invokeLLM({
     prompt,
@@ -448,6 +461,7 @@ Respond dalam Bahasa Indonesia.`;
 // ==========================================
 
 export const generateSocraticQuestion = async (problem, profile, context = 'initial') => {
+  const langInst = getLanguageInstruction(profile);
   let prompt;
 
   if (context === 'initial') {
@@ -469,7 +483,7 @@ Generate 1 pertanyaan pembuka yang:
 
 Contoh: "Apa satu hal yang paling kamu takutkan kalau keputusan ini salah?"
 
-Output hanya pertanyaan dalam Bahasa Indonesia.`;
+Output hanya pertanyaan. ${langInst}`;
   } else if (context === 'pause') {
     prompt = `User stuck di problem:
 
@@ -481,7 +495,7 @@ Generate 1 pertanyaan singkat yang:
 2. Socratic style
 3. 1 kalimat
 
-Output hanya pertanyaan dalam Bahasa Indonesia.`;
+Output hanya pertanyaan. ${langInst}`;
   }
 
   const response = await invokeLLM({ prompt });
@@ -522,7 +536,7 @@ Icons yang available: 🔥 (aggressive/bold), 🛡️ (defensive/safe), 🤝 (co
 
 Buat juga 1 pertanyaan refleksi yang akan ditanyakan SETELAH user memilih. Pertanyaan ini harus spesifik tentang pilihan yang dibuat.
 
-Output dalam Bahasa Indonesia.`;
+Output in the same language as the problem.`;
 
   try {
     const response = await invokeLLM({
@@ -593,7 +607,7 @@ CRITICAL: Ini adalah "tamparan pertama" - user harus menyadari bahwa setiap kepu
 
 Juga generate 1 insight singkat (1 kalimat) yang menyimpulkan pembelajaran dari konsekuensi ini.
 
-Output dalam Bahasa Indonesia.`;
+Output in the same language as the problem.`;
 
   try {
     const response = await invokeLLM({

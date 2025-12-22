@@ -77,21 +77,34 @@ router.post('/follow-up', async (req, res) => {
     const response = completion.choices[0]?.message?.content?.trim();
 
     // Check if mentor decides to conclude (after minimum exchanges)
-    const shouldConclude = exchange_count >= 4 && response?.toLowerCase().includes('[selesai]');
+    const lang = profile?.language || 'en';
+    const concludeMarker = lang === 'id' ? '[selesai]' : '[conclude]';
+    const shouldConclude = exchange_count >= 4 && response?.toLowerCase().includes(concludeMarker.toLowerCase());
+
+    const defaultFollowUp = lang === 'id'
+      ? "Bisa ceritakan lebih lanjut tentang alasanmu?"
+      : "Can you tell me more about your reasoning?";
 
     res.json({
-      question: response?.replace('[selesai]', '').trim() || "Bisa ceritakan lebih lanjut tentang alasanmu?",
+      question: response?.replace(concludeMarker, '').replace('[selesai]', '').replace('[conclude]', '').trim() || defaultFollowUp,
       type: responseType,
       should_conclude: shouldConclude
     });
   } catch (error) {
     console.error('Follow-up generation error:', error);
-    // Personalized fallback based on exchange count
-    const fallbacks = [
+    // Personalized fallback based on exchange count - check profile language
+    const profile = req.body.user_id ? await UserProfile.findOne({ user_id: req.body.user_id }).catch(() => null) : null;
+    const lang = profile?.language || 'en';
+    const fallbacks = lang === 'id' ? [
       "Oke, menarik. Tapi apa yang membuatmu yakin dengan pilihan ini?",
       "Hmm, saya lihat alasanmu. Tapi bagaimana kalau ternyata asumsimu salah?",
       "Coba bayangkan kamu adalah stakeholder yang paling dirugikan. Apa reaksimu?",
       "Sebelum lanjut - apa satu hal yang masih bikin kamu ragu?"
+    ] : [
+      "Interesting. But what makes you confident about this choice?",
+      "I see your reasoning. But what if your assumption turns out to be wrong?",
+      "Imagine you're the stakeholder who loses the most. What's your reaction?",
+      "Before we continue - what's one thing that still makes you doubt?"
     ];
     res.json({
       question: fallbacks[(req.body.exchange_count || 0) % fallbacks.length],
@@ -159,8 +172,40 @@ function buildMentorPrompt(problem, userResponse, profile, exchangeCount, respon
 
   const archetypeStyle = archetypeStyles[archetype] || archetypeStyles.analyst;
   const toneStyle = visualStateTones[visualState] || visualStateTones.calm;
+  const isEnglish = language === 'en';
 
-  const systemPrompt = `Kamu adalah mentor bisnis yang ${archetypeStyle.style}. 
+  // Language-aware system prompt
+  const systemPrompt = isEnglish
+    ? `You are a business mentor who is ${archetypeStyle.style}. 
+
+CURRENT TONE: ${toneStyle.style}
+${toneStyle.instruction}
+
+IMPORTANT RULES:
+1. DON'T use complex jargon. Use simple: reason, pros-cons, consideration
+2. Your response can be: follow-up questions, short explanations, small tasks, or reflections
+3. Talk like a mentor who cares, not a chatbot
+4. Focus on: ${archetypeStyle.focus}
+5. Watch for this archetype's weakness: ${archetypeStyle.challenge}
+6. Natural and simple English
+7. Example tone: "${toneStyle.examples[0]}"
+
+SENTENCE COUNT BASED ON STATE:
+- Calm/Focused: 2-3 sentences
+- Urgent: 1-2 sentences
+- Critical: 1 sentence only
+
+RESPONSE TYPE:
+- Exchange 1-2: Dig deeper, ask for clarification, break into sub-problems
+- Exchange 3+: Apply pressure, stress test, challenge assumptions
+- If sufficient (4+ exchange and user is consistent), add [conclude] at the end
+
+DON'T:
+- Say "interesting" or "good" too much
+- Use templates that feel like a bot
+- Ask what was already answered
+- Give direct answers`
+    : `Kamu adalah mentor bisnis yang ${archetypeStyle.style}. 
 
 TONE SAAT INI: ${toneStyle.style}
 ${toneStyle.instruction}
@@ -190,7 +235,16 @@ JANGAN:
 - Tanya hal yang sudah dijawab
 - Beri jawaban langsung`;
 
-  const userPrompt = `MASALAH:
+  const userPrompt = isEnglish
+    ? `PROBLEM:
+${problem.title}
+${problem.context}
+
+USER'S ANSWER (exchange #${exchangeCount}):
+"${userResponse}"
+
+Give mentor response with ${toneStyle.style} tone:`
+    : `MASALAH:
 ${problem.title}
 ${problem.context}
 
@@ -221,11 +275,14 @@ router.post('/stress-test', async (req, res) => {
     }
 
     // Use AI Simple for stress test generation
-    const result = await aiSimple.generateSimpleFollowUp(problem, user_response || '', 0.7);
+    const profile = req.body.user_id ? await UserProfile.findOne({ user_id: req.body.user_id }) : null;
+    const result = await aiSimple.generateSimpleFollowUp(problem, user_response || '', 0.7, profile);
 
     // Fallback if generation fails
-    const question = result?.question ||
-      "Bagaimana kalau asumsi terbesarmu ternyata salah? Apa contingency plan-mu?";
+    const fallback = profile?.language === 'id'
+      ? "Bagaimana kalau asumsi terbesarmu ternyata salah? Apa contingency plan-mu?"
+      : "What if your biggest assumption turns out to be wrong? What's your contingency plan?";
+    const question = result?.question || fallback;
 
     res.json({
       question,

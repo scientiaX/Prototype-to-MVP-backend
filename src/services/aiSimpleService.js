@@ -13,38 +13,94 @@ import { invokeLLM } from '../config/openai.js';
 import SessionMemory from '../models/SessionMemory.js';
 
 // ==========================================
-// ARCHETYPE-SPECIFIC WARNING TEMPLATES
+// LANGUAGE HELPER
+// ==========================================
+
+/**
+ * Get language instruction for AI prompts
+ */
+const getLanguageInstruction = (profile) => {
+    const lang = profile?.language || 'en';
+    return lang === 'id' ? 'Respond in Indonesian (Bahasa Indonesia).' : 'Respond in English.';
+};
+
+// ==========================================
+// ARCHETYPE-SPECIFIC WARNING TEMPLATES (Bilingual)
 // ==========================================
 
 const WARNING_TEMPLATES = {
-    analyst: {
-        over_analysis: "Kamu over-thinking. Data tidak akan lebih lengkap 10 menit lagi. Putuskan dengan informasi yang ada.",
-        pause: "Sudah {seconds} detik tanpa input. Analisis sudah cukup - sekarang saatnya memutuskan.",
-        hesitant: "Pola sudah terlihat. Perfect clarity tidak akan datang. Mulai tulis keputusanmu."
+    en: {
+        analyst: {
+            over_analysis: "You're over-thinking. Data won't be more complete in 10 minutes. Decide with what you have.",
+            pause: "It's been {seconds} seconds without input. Analysis is enough - time to decide.",
+            hesitant: "Pattern is clear. Perfect clarity won't come. Start writing your decision."
+        },
+        risk_taker: {
+            over_analysis: "You're being too cautious for a risk-taker. Make a decision, correct later.",
+            pause: "It's been {seconds} seconds with no output. In the real world, competitors are already moving.",
+            hesitant: "Your instinct is usually right. Trust it. Write something now."
+        },
+        builder: {
+            over_analysis: "Execution starts with the first decision. Write something, polish later.",
+            pause: "Builders excel at execution, not analysis paralysis. Start with a rough draft.",
+            hesitant: "A prototype is better than a perfect plan. Start building now."
+        },
+        strategist: {
+            over_analysis: "The best strategists know when to stop planning and start moving. Now is the time.",
+            pause: "Pattern is clear. Don't wait for perfect clarity that won't come.",
+            hesitant: "Chess masters don't wait to see all possibilities. Make your first move."
+        }
     },
-    risk_taker: {
-        over_analysis: "Kamu terlalu berhati-hati untuk seorang risk-taker. Ambil keputusan, perbaiki nanti.",
-        pause: "Sudah {seconds} detik tidak menulis apa-apa. Di dunia nyata, kompetitor sudah bergerak.",
-        hesitant: "Instinct-mu biasanya benar. Trust it. Tulis sesuatu sekarang."
-    },
-    builder: {
-        over_analysis: "Eksekusi dimulai dari keputusan pertama. Tulis sesuatu, polish nanti.",
-        pause: "Builder bagus di eksekusi, bukan di analysis paralysis. Mulai dari draft kasar.",
-        hesitant: "Prototype lebih baik dari rencana sempurna. Mulai bangun sekarang."
-    },
-    strategist: {
-        over_analysis: "Strategist terbaik tahu kapan berhenti merencanakan dan mulai bergerak. Sekarang waktunya.",
-        pause: "Pola sudah terlihat. Jangan tunggu perfect clarity yang tidak akan datang.",
-        hesitant: "Chess master tidak menunggu melihat semua kemungkinan. Buat langkah pertamamu."
+    id: {
+        analyst: {
+            over_analysis: "Kamu over-thinking. Data tidak akan lebih lengkap 10 menit lagi. Putuskan dengan informasi yang ada.",
+            pause: "Sudah {seconds} detik tanpa input. Analisis sudah cukup - sekarang saatnya memutuskan.",
+            hesitant: "Pola sudah terlihat. Perfect clarity tidak akan datang. Mulai tulis keputusanmu."
+        },
+        risk_taker: {
+            over_analysis: "Kamu terlalu berhati-hati untuk seorang risk-taker. Ambil keputusan, perbaiki nanti.",
+            pause: "Sudah {seconds} detik tidak menulis apa-apa. Di dunia nyata, kompetitor sudah bergerak.",
+            hesitant: "Instinct-mu biasanya benar. Trust it. Tulis sesuatu sekarang."
+        },
+        builder: {
+            over_analysis: "Eksekusi dimulai dari keputusan pertama. Tulis sesuatu, polish nanti.",
+            pause: "Builder bagus di eksekusi, bukan di analysis paralysis. Mulai dari draft kasar.",
+            hesitant: "Prototype lebih baik dari rencana sempurna. Mulai bangun sekarang."
+        },
+        strategist: {
+            over_analysis: "Strategist terbaik tahu kapan berhenti merencanakan dan mulai bergerak. Sekarang waktunya.",
+            pause: "Pola sudah terlihat. Jangan tunggu perfect clarity yang tidak akan datang.",
+            hesitant: "Chess master tidak menunggu melihat semua kemungkinan. Buat langkah pertamamu."
+        }
     }
 };
 
 const STIMULATION_PROMPTS = {
-    challenge: "Apa yang membuatmu ragu? Sebutkan satu alasan terbesarmu.",
-    what_if: "Bagaimana kalau kamu salah? Apa konsekuensi terburuknya?",
-    alternative: "Apakah ada solusi lain yang kamu pertimbangkan tapi tidak pilih? Kenapa?",
-    accountability: "Kalau kamu harus menjelaskan keputusan ini ke investor dalam 2 menit, apa yang akan kamu katakan?",
-    stress_test: "Bagaimana kalau asumsi terbesarmu ternyata salah?"
+    en: {
+        challenge: "What's making you hesitate? Name your biggest concern.",
+        what_if: "What if you're wrong? What's the worst consequence?",
+        alternative: "Is there another solution you considered but didn't choose? Why?",
+        accountability: "If you had to explain this decision to an investor in 2 minutes, what would you say?",
+        stress_test: "What if your biggest assumption turns out to be wrong?"
+    },
+    id: {
+        challenge: "Apa yang membuatmu ragu? Sebutkan satu alasan terbesarmu.",
+        what_if: "Bagaimana kalau kamu salah? Apa konsekuensi terburuknya?",
+        alternative: "Apakah ada solusi lain yang kamu pertimbangkan tapi tidak pilih? Kenapa?",
+        accountability: "Kalau kamu harus menjelaskan keputusan ini ke investor dalam 2 menit, apa yang akan kamu katakan?",
+        stress_test: "Bagaimana kalau asumsi terbesarmu ternyata salah?"
+    }
+};
+
+// Helper to get templates by language
+const getWarningTemplates = (profile) => {
+    const lang = profile?.language || 'en';
+    return WARNING_TEMPLATES[lang] || WARNING_TEMPLATES.en;
+};
+
+const getStimulationPrompts = (profile) => {
+    const lang = profile?.language || 'en';
+    return STIMULATION_PROMPTS[lang] || STIMULATION_PROMPTS.en;
 };
 
 // ==========================================
@@ -56,7 +112,8 @@ const STIMULATION_PROMPTS = {
  */
 export const generateWarningMessage = async (profile, context, sessionMemory = null) => {
     const archetype = profile?.primary_archetype || 'analyst';
-    const templates = WARNING_TEMPLATES[archetype] || WARNING_TEMPLATES.analyst;
+    const langTemplates = getWarningTemplates(profile);
+    const templates = langTemplates[archetype] || langTemplates.analyst;
 
     // For simple warnings, use template (no AI call)
     if (context.type === 'over_analysis') {
@@ -69,16 +126,17 @@ export const generateWarningMessage = async (profile, context, sessionMemory = n
 
     // For complex warnings, use AI (low-cost model)
     try {
-        const prompt = `Kamu adalah mentor yang tegas. User dengan archetype "${archetype}" sedang tidak aktif selama ${context.seconds} detik.
+        const langInst = getLanguageInstruction(profile);
+        const prompt = `You are a firm mentor. User with archetype "${archetype}" has been inactive for ${context.seconds} seconds.
     
-Konteks masalah: ${context.problem_title || 'Problem solving challenge'}
+Problem context: ${context.problem_title || 'Problem solving challenge'}
 
-Beri 1 pesan singkat (1-2 kalimat) yang:
-1. Tegas tapi supportive
-2. Sesuai dengan profil ${archetype}
-3. Mendorong user untuk segera menulis
+Give 1 short message (1-2 sentences) that:
+1. Firm but supportive
+2. Matches the ${archetype} profile
+3. Encourages user to start writing
 
-Respond dalam Bahasa Indonesia saja, tanpa penjelasan.`;
+${langInst} No explanation, just the message.`;
 
         const response = await invokeLLM({
             prompt,
@@ -102,8 +160,10 @@ Respond dalam Bahasa Indonesia saja, tanpa penjelasan.`;
 export const generateStimulationQuestion = async (problem, profile, context = 'pause') => {
     try {
         const archetype = profile?.primary_archetype || 'analyst';
+        const langInst = getLanguageInstruction(profile);
+        const stimPrompts = getStimulationPrompts(profile);
 
-        const prompt = `Kamu adalah mentor Socratic yang mendorong pemikiran kritis.
+        const prompt = `You are a Socratic mentor who pushes critical thinking.
 
 PROBLEM:
 Title: ${problem.title}
@@ -111,32 +171,27 @@ Context: ${problem.context?.substring(0, 300)}
 Objective: ${problem.objective}
 
 USER ARCHETYPE: ${archetype}
-SITUATION: User belum mulai menjawab atau stuck.
+SITUATION: User hasn't started answering or is stuck.
 
-Generate 1 pertanyaan singkat yang:
-1. Socratic - buat user berpikir sendiri
-2. Tidak terlalu luas, tidak terlalu sempit
-3. Sesuai archetype ${archetype}
-4. Maksimal 1-2 kalimat
+Generate 1 short question that:
+1. Socratic - make user think for themselves
+2. Not too broad, not too narrow
+3. Matches archetype ${archetype}
+4. Maximum 1-2 sentences
 
-Contoh style:
-- "Apa satu hal yang paling kamu takutkan kalau keputusan ini salah?"
-- "Kalau harus memilih dalam 30 detik, opsi mana yang kamu condong?"
-- "Apa trade-off terbesar yang harus kamu terima di sini?"
-
-Respond HANYA pertanyaan dalam Bahasa Indonesia, tanpa penjelasan.`;
+${langInst} No explanation, just the question.`;
 
         const response = await invokeLLM({
             prompt,
             model: 'gpt-3.5-turbo'
         });
 
-        return typeof response === 'string' ? response : STIMULATION_PROMPTS.challenge;
+        return typeof response === 'string' ? response : stimPrompts.challenge;
     } catch (error) {
         console.error('AI stimulation question error:', error);
-        // Fallback to random template
-        const keys = Object.keys(STIMULATION_PROMPTS);
-        return STIMULATION_PROMPTS[keys[Math.floor(Math.random() * keys.length)]];
+        const stimPrompts = getStimulationPrompts(profile);
+        const keys = Object.keys(stimPrompts);
+        return stimPrompts[keys[Math.floor(Math.random() * keys.length)]];
     }
 };
 
@@ -149,33 +204,42 @@ Respond HANYA pertanyaan dalam Bahasa Indonesia, tanpa penjelasan.`;
  */
 export const generateHint = async (problem, profile, partialAnswer = '') => {
     try {
-        const prompt = `Kamu adalah mentor yang membantu tanpa memberikan jawaban langsung.
+        const langInst = getLanguageInstruction(profile);
+        const noAnswer = profile?.language === 'id' ? '(Belum ada jawaban)' : '(No answer yet)';
+
+        const prompt = `You are a mentor who helps without giving direct answers.
 
 PROBLEM:
 ${problem.title}
 ${problem.objective}
 
 USER'S PARTIAL ANSWER (if any):
-${partialAnswer || '(Belum ada jawaban)'}
+${partialAnswer || noAnswer}
 
 USER ARCHETYPE: ${profile?.primary_archetype || 'analyst'}
 
-Berikan 1 hint singkat yang:
-1. Tidak memberikan jawaban
-2. Membantu user berpikir ke arah yang benar
-3. Maksimal 2 kalimat
+Give 1 short hint that:
+1. Doesn't give the answer
+2. Helps user think in the right direction
+3. Maximum 2 sentences
 
-Respond dalam Bahasa Indonesia saja.`;
+${langInst}`;
 
         const response = await invokeLLM({
             prompt,
             model: 'gpt-3.5-turbo'
         });
 
-        return typeof response === 'string' ? response : "Coba pikirkan: apa yang paling penting untuk diputuskan terlebih dahulu?";
+        const fallback = profile?.language === 'id'
+            ? "Coba pikirkan: apa yang paling penting untuk diputuskan terlebih dahulu?"
+            : "Think about: what's the most important thing to decide first?";
+        return typeof response === 'string' ? response : fallback;
     } catch (error) {
         console.error('AI hint generation error:', error);
-        return "Coba pikirkan: apa yang paling penting untuk diputuskan terlebih dahulu?";
+        const fallback = profile?.language === 'id'
+            ? "Coba pikirkan: apa yang paling penting untuk diputuskan terlebih dahulu?"
+            : "Think about: what's the most important thing to decide first?";
+        return fallback;
     }
 };
 
@@ -186,29 +250,36 @@ Respond dalam Bahasa Indonesia saja.`;
 /**
  * Generate comprehension check question
  */
-export const generateComprehensionCheck = async (problem, currentQuestion) => {
+export const generateComprehensionCheck = async (problem, currentQuestion, profile = null) => {
     try {
-        const prompt = `User belum menjawab pertanyaan ini: "${currentQuestion}"
+        const langInst = getLanguageInstruction(profile);
+        const prompt = `User hasn't answered this question: "${currentQuestion}"
 
-Masalahnya tentang: ${problem.title}
+The problem is about: ${problem.title}
 
-Ubah pertanyaan menjadi lebih spesifik dan mudah dijawab. Maksimal 1 kalimat.
+Transform the question to be more specific and easier to answer. Maximum 1 sentence.
 
-Contoh transformasi:
-- "Apa solusimu?" → "Dari 2 opsi ini, mana yang kamu pilih: A atau B?"
-- "Bagaimana strategimu?" → "Apa langkah PERTAMA yang akan kamu ambil?"
+Example transformations:
+- "What's your solution?" → "Of these 2 options, which do you choose: A or B?"
+- "What's your strategy?" → "What's the FIRST step you'll take?"
 
-Respond dalam Bahasa Indonesia, HANYA pertanyaan baru tanpa penjelasan.`;
+${langInst} Only the new question, no explanation.`;
 
         const response = await invokeLLM({
             prompt,
             model: 'gpt-3.5-turbo'
         });
 
-        return typeof response === 'string' ? response : "Apa satu keputusan pertama yang akan kamu ambil?";
+        const fallback = profile?.language === 'id'
+            ? "Apa satu keputusan pertama yang akan kamu ambil?"
+            : "What's your first decision?";
+        return typeof response === 'string' ? response : fallback;
     } catch (error) {
         console.error('AI comprehension check error:', error);
-        return "Apa satu keputusan pertama yang akan kamu ambil?";
+        const fallback = profile?.language === 'id'
+            ? "Apa satu keputusan pertama yang akan kamu ambil?"
+            : "What's your first decision?";
+        return fallback;
     }
 };
 
@@ -262,8 +333,11 @@ export const shouldDelegateToAgent = async (context) => {
 /**
  * Generate simple follow-up question after user response
  */
-export const generateSimpleFollowUp = async (problem, userResponse, responseQuality) => {
+export const generateSimpleFollowUp = async (problem, userResponse, responseQuality, profile = null) => {
     try {
+        const langInst = getLanguageInstruction(profile);
+        const stimPrompts = getStimulationPrompts(profile);
+
         // If response quality is low, ask clarifying question
         const qualityThreshold = 0.5;
 
@@ -274,31 +348,32 @@ export const generateSimpleFollowUp = async (problem, userResponse, responseQual
             promptType = 'stress_test';
         }
 
-        const prompts = {
-            clarification: `User menjawab: "${userResponse.substring(0, 200)}..."
+        const clarificationText = profile?.language === 'id'
+            ? 'Berikan 1 pertanyaan klarifikasi singkat untuk memahami keputusan mereka lebih jelas. Maksimal 1 kalimat.'
+            : 'Give 1 short clarifying question to better understand their decision. Maximum 1 sentence.';
 
-Berikan 1 pertanyaan klarifikasi singkat untuk memahami keputusan mereka lebih jelas. Maksimal 1 kalimat dalam Bahasa Indonesia.`,
+        const stressTestText = profile?.language === 'id'
+            ? 'Berikan 1 pertanyaan stress-test singkat yang menguji asumsi mereka. Contoh: "Bagaimana kalau X tidak bekerja?" Maksimal 1 kalimat.'
+            : 'Give 1 short stress-test question that tests their assumptions. Example: "What if X doesn\'t work?" Maximum 1 sentence.';
 
-            stress_test: `User menjawab: "${userResponse.substring(0, 200)}..."
-
-Masalah: ${problem.title}
-
-Berikan 1 pertanyaan stress-test singkat yang menguji asumsi mereka. Contoh: "Bagaimana kalau X tidak bekerja?" Maksimal 1 kalimat dalam Bahasa Indonesia.`
-        };
+        const prompt = promptType === 'clarification'
+            ? `User answered: "${userResponse.substring(0, 200)}..."\n\n${clarificationText} ${langInst}`
+            : `User answered: "${userResponse.substring(0, 200)}..."\n\nProblem: ${problem.title}\n\n${stressTestText} ${langInst}`;
 
         const response = await invokeLLM({
-            prompt: prompts[promptType],
+            prompt,
             model: 'gpt-3.5-turbo'
         });
 
         return {
-            question: typeof response === 'string' ? response : STIMULATION_PROMPTS.stress_test,
+            question: typeof response === 'string' ? response : stimPrompts.stress_test,
             type: promptType
         };
     } catch (error) {
         console.error('AI follow-up generation error:', error);
+        const stimPrompts = getStimulationPrompts(profile);
         return {
-            question: STIMULATION_PROMPTS.stress_test,
+            question: stimPrompts.stress_test,
             type: 'stress_test'
         };
     }
@@ -313,6 +388,7 @@ Berikan 1 pertanyaan stress-test singkat yang menguji asumsi mereka. Contoh: "Ba
  */
 export const generatePressure = async (problem, profile, currentPressureLevel) => {
     try {
+        const langInst = getLanguageInstruction(profile);
         const pressureTypes = {
             1: 'time_reminder',
             2: 'consequence_highlight',
@@ -323,33 +399,40 @@ export const generatePressure = async (problem, profile, currentPressureLevel) =
 
         const pressureType = pressureTypes[currentPressureLevel] || 'time_reminder';
 
-        const prompt = `Generate tekanan level ${currentPressureLevel}/5 untuk problem solving.
+        const prompt = `Generate pressure level ${currentPressureLevel}/5 for problem solving.
 
 PROBLEM: ${problem.title}
 USER ARCHETYPE: ${profile?.primary_archetype}
 PRESSURE TYPE: ${pressureType}
 
-Buat 1 kalimat singkat yang menambah urgency. Contoh:
-- Level 1: "Ingat, waktu terus berjalan."
-- Level 3: "Kalau kamu tidak memutuskan, kompetitor yang akan memutuskan."
-- Level 5: "Ini keputusan terakhir. Tidak ada waktu lagi untuk ragu."
+Create 1 short sentence that adds urgency. Examples:
+- Level 1: "Remember, time is ticking."
+- Level 3: "If you don't decide, your competitor will."
+- Level 5: "This is your final decision. No more time to hesitate."
 
-Respond HANYA tekanan dalam Bahasa Indonesia.`;
+${langInst} Only the pressure message.`;
 
         const response = await invokeLLM({
             prompt,
             model: 'gpt-3.5-turbo'
         });
 
+        const defaultMsg = profile?.language === 'id'
+            ? "Waktu terus berjalan. Setiap detik delay adalah kehilangan momentum."
+            : "Time is running. Every second of delay is lost momentum.";
+
         return {
-            message: typeof response === 'string' ? response : "Waktu terus berjalan. Setiap detik delay adalah kehilangan momentum.",
+            message: typeof response === 'string' ? response : defaultMsg,
             level: currentPressureLevel,
             type: pressureType
         };
     } catch (error) {
         console.error('AI pressure generation error:', error);
+        const defaultMsg = profile?.language === 'id'
+            ? "Waktu terus berjalan. Setiap detik delay adalah kehilangan momentum."
+            : "Time is running. Every second of delay is lost momentum.";
         return {
-            message: "Waktu terus berjalan. Setiap detik delay adalah kehilangan momentum.",
+            message: defaultMsg,
             level: currentPressureLevel,
             type: 'time_reminder'
         };
