@@ -1,9 +1,10 @@
 /**
  * AWS Bedrock Configuration - 3-Tier AI System
  * 
+ * Uses Amazon Bedrock native API Keys (bearer token authentication)
+ * 
  * Environment Variable: AWS_AI_API
- * Format: ACCESS_KEY:SECRET_KEY:REGION
- * Example: AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:us-east-1
+ * Format: The full API key from Amazon Bedrock console (starts with ABSK...)
  * 
  * Model Tiers:
  * - Low (Mistral 7B): Fast realtime responses, reminders, small steps
@@ -11,7 +12,6 @@
  * - Agent (Claude 3.5 Sonnet): Problem generation, XP calculation, evaluation
  */
 
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -23,130 +23,100 @@ const MODEL_IDS = {
     AGENT: 'anthropic.claude-3-5-sonnet-20241022-v2:0'
 };
 
-// Parse AWS credentials from environment
-const parseAWSCredentials = () => {
-    const awsApiKey = process.env.AWS_AI_API;
+// Parse region from API key name (BedrockAPIKey-{identifier}-at-{accountId})
+const parseRegionFromApiKey = (apiKey) => {
+    try {
+        // Decode the ABSK key to get the key name
+        const decoded = Buffer.from(apiKey.substring(4), 'base64').toString('utf-8');
+        // Try to find region pattern - default to us-east-1 if not found
+        // The key name format is typically: BedrockAPIKey-{id}-at-{accountId}
+        return 'us-east-1'; // Default region - user can override with AWS_REGION env var
+    } catch (e) {
+        return 'us-east-1';
+    }
+};
 
-    if (!awsApiKey) {
+// Get configuration
+const getConfig = () => {
+    const apiKey = process.env.AWS_AI_API;
+    const region = process.env.AWS_REGION || parseRegionFromApiKey(apiKey || '') || 'us-east-1';
+
+    if (!apiKey) {
         console.warn('[AWS Bedrock] AWS_AI_API not set. AI features will not work.');
         return null;
     }
 
-    const parts = awsApiKey.split(':');
-    if (parts.length < 3) {
-        console.error('[AWS Bedrock] Invalid AWS_AI_API format. Expected: ACCESS_KEY:SECRET_KEY:REGION');
-        return null;
-    }
+    console.log('[AWS Bedrock] Using API key authentication, region:', region);
 
-    return {
-        accessKeyId: parts[0],
-        secretAccessKey: parts[1],
-        region: parts[2]
-    };
-};
-
-// Create Bedrock client
-let bedrockClient = null;
-
-const getBedrockClient = () => {
-    if (bedrockClient) return bedrockClient;
-
-    const credentials = parseAWSCredentials();
-    if (!credentials) return null;
-
-    bedrockClient = new BedrockRuntimeClient({
-        region: credentials.region,
-        credentials: {
-            accessKeyId: credentials.accessKeyId,
-            secretAccessKey: credentials.secretAccessKey
-        }
-    });
-
-    console.log('[AWS Bedrock] Client initialized for region:', credentials.region);
-    return bedrockClient;
+    return { apiKey, region };
 };
 
 /**
- * Format prompt for Claude models (Anthropic)
- */
-const formatClaudePrompt = (prompt, jsonSchema = null) => {
-    let formattedPrompt = prompt;
-    if (jsonSchema) {
-        formattedPrompt += '\n\nRespond with valid JSON matching this schema: ' + JSON.stringify(jsonSchema);
-    }
-    return formattedPrompt;
-};
-
-/**
- * Format prompt for Mistral models
- */
-const formatMistralPrompt = (prompt, jsonSchema = null) => {
-    let formattedPrompt = prompt;
-    if (jsonSchema) {
-        formattedPrompt += '\n\nRespond with valid JSON matching this schema: ' + JSON.stringify(jsonSchema);
-    }
-    return `<s>[INST] ${formattedPrompt} [/INST]`;
-};
-
-/**
- * Invoke a Bedrock model with the given prompt
+ * Invoke a Bedrock model using the Converse API with API key authentication
  */
 const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN') => {
-    const client = getBedrockClient();
-    if (!client) {
-        throw new Error('AWS Bedrock client not initialized. Check AWS_AI_API environment variable.');
+    const config = getConfig();
+    if (!config) {
+        throw new Error('AWS Bedrock not configured. Check AWS_AI_API environment variable.');
     }
 
-    let body;
-    const isClaudeModel = modelId.startsWith('anthropic.');
-    const isMistralModel = modelId.startsWith('mistral.');
+    const { apiKey, region } = config;
 
-    if (isClaudeModel) {
-        // Claude model format
-        body = JSON.stringify({
-            anthropic_version: 'bedrock-2023-05-31',
-            max_tokens: 2000,
-            temperature: 0.7,
-            messages: [
-                {
-                    role: 'user',
-                    content: formatClaudePrompt(prompt, jsonSchema)
-                }
-            ]
-        });
-    } else if (isMistralModel) {
-        // Mistral model format
-        body = JSON.stringify({
-            prompt: formatMistralPrompt(prompt, jsonSchema),
-            max_tokens: 1000,
+    // Build the request for Bedrock Converse API
+    const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/converse`;
+
+    // Format the message content
+    let messageContent = prompt;
+    if (jsonSchema) {
+        messageContent += '\n\nRespond with valid JSON matching this schema: ' + JSON.stringify(jsonSchema);
+    }
+
+    const requestBody = {
+        messages: [
+            {
+                role: 'user',
+                content: [
+                    {
+                        text: messageContent
+                    }
+                ]
+            }
+        ],
+        inferenceConfig: {
+            maxTokens: 2000,
             temperature: 0.7
-        });
-    } else {
-        throw new Error(`Unsupported model: ${modelId}`);
-    }
+        }
+    };
 
     const startTime = Date.now();
 
     try {
-        const command = new InvokeModelCommand({
-            modelId,
-            body,
-            contentType: 'application/json',
-            accept: 'application/json'
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
         });
 
-        const response = await client.send(command);
-        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
 
+        const data = await response.json();
         const elapsed = Date.now() - startTime;
         console.log(`[AWS Bedrock - ${tier}] Model: ${modelId}, Time: ${elapsed}ms`);
 
-        // Extract text response based on model type
-        let content;
-        if (isClaudeModel) {
-            content = responseBody.content?.[0]?.text || responseBody.completion || '';
-        } else if (isMistralModel) {
-            content = responseBody.outputs?.[0]?.text || responseBody.generation || '';
+        // Extract text from response
+        let content = '';
+        if (data.output?.message?.content) {
+            content = data.output.message.content
+                .filter(c => c.text)
+                .map(c => c.text)
+                .join('');
         }
 
         // Parse JSON if schema was provided
