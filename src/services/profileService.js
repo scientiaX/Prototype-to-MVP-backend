@@ -125,42 +125,126 @@ export const calculateProfile = (answers) => {
 };
 
 /**
- * Calculate XP distribution based on AI evaluation
- * Now considers stagnation detection and assigns XP per archetype
+ * ============================================
+ * FRIKSI #2: COURAGE-BASED XP CALCULATION
+ * ============================================
+ * 
+ * XP diberikan untuk KEBERANIAN, bukan hanya KEBENARAN.
+ * Courage XP comes FIRST, accuracy XP comes second.
+ * 
+ * Prinsip: "Game memberi reward sebelum mastery"
  */
-export const calculateXPDistribution = (evaluation, selectedProblem, profile) => {
-  // Base XP from AI evaluation (0-20 per archetype)
-  const xpBreakdown = {
+
+/**
+ * Calculate courage XP - rewards for trying, not correctness
+ * @param {Object} sessionData - Session metrics and behavior data
+ */
+export const calculateCourageXP = (sessionData = {}) => {
+  let courageXP = 0;
+  const courageBreakdown = {};
+
+  // XP for quick first action (under 30 seconds)
+  if (sessionData.first_action_time_ms && sessionData.first_action_time_ms < 30000) {
+    const quickActionXP = 5;
+    courageBreakdown.quick_action = quickActionXP;
+    courageXP += quickActionXP;
+  }
+
+  // XP for trying different approaches
+  if (sessionData.unique_approaches && sessionData.unique_approaches > 1) {
+    const explorationXP = Math.min(sessionData.unique_approaches * 3, 12);
+    courageBreakdown.exploration = explorationXP;
+    courageXP += explorationXP;
+  }
+
+  // XP for completing reflection (even optional)
+  if (sessionData.completed_reflection) {
+    const reflectionXP = 10;
+    courageBreakdown.reflection = reflectionXP;
+    courageXP += reflectionXP;
+  }
+
+  // XP for making prediction attempt (regardless of accuracy)
+  if (sessionData.made_prediction) {
+    const predictionXP = 5;
+    courageBreakdown.prediction = predictionXP;
+    courageXP += predictionXP;
+  }
+
+  // XP for completing entry flow
+  if (sessionData.completed_entry_flow) {
+    const entryFlowXP = 8;
+    courageBreakdown.entry_flow = entryFlowXP;
+    courageXP += entryFlowXP;
+  }
+
+  // XP for engagement (number of exchanges)
+  if (sessionData.exchange_count && sessionData.exchange_count >= 3) {
+    const engagementXP = Math.min(sessionData.exchange_count * 2, 10);
+    courageBreakdown.engagement = engagementXP;
+    courageXP += engagementXP;
+  }
+
+  return { courageXP, courageBreakdown };
+};
+
+/**
+ * Calculate XP distribution based on AI evaluation
+ * Now includes COURAGE XP before accuracy XP (Friksi #2)
+ */
+export const calculateXPDistribution = (evaluation, selectedProblem, profile, sessionData = {}) => {
+  // STEP 1: Calculate COURAGE XP first (Friksi #2)
+  const { courageXP, courageBreakdown } = calculateCourageXP(sessionData);
+
+  // STEP 2: Calculate accuracy-based XP from AI evaluation (0-20 per archetype)
+  const accuracyBreakdown = {
     risk_taker: Math.max(0, Math.min(20, evaluation.xp_risk_taker || 0)),
     analyst: Math.max(0, Math.min(20, evaluation.xp_analyst || 0)),
     builder: Math.max(0, Math.min(20, evaluation.xp_builder || 0)),
     strategist: Math.max(0, Math.min(20, evaluation.xp_strategist || 0))
   };
 
-  // Total XP as sum of archetype XP
-  let totalXp = Object.values(xpBreakdown).reduce((a, b) => a + b, 0);
+  // Calculate base accuracy XP
+  let accuracyXP = Object.values(accuracyBreakdown).reduce((a, b) => a + b, 0);
 
   // Apply difficulty multiplier if achieved level up
   if (selectedProblem.difficulty >= profile.current_difficulty && evaluation.level_up_achieved) {
     const difficultyBonus = 1 + (selectedProblem.difficulty - profile.current_difficulty) * 0.2;
     const qualityMultiplier = evaluation.quality_score || 1;
 
-    Object.keys(xpBreakdown).forEach(key => {
-      xpBreakdown[key] = Math.round(xpBreakdown[key] * difficultyBonus * qualityMultiplier);
+    Object.keys(accuracyBreakdown).forEach(key => {
+      accuracyBreakdown[key] = Math.round(accuracyBreakdown[key] * difficultyBonus * qualityMultiplier);
     });
 
-    totalXp = Math.round(totalXp * difficultyBonus * qualityMultiplier);
+    accuracyXP = Math.round(accuracyXP * difficultyBonus * qualityMultiplier);
   }
 
-  // If stagnation detected, reduce XP
+  // If stagnation detected, reduce ACCURACY XP (not courage XP)
   if (evaluation.stagnation_detected) {
-    Object.keys(xpBreakdown).forEach(key => {
-      xpBreakdown[key] = Math.floor(xpBreakdown[key] * 0.3); // 70% reduction
+    Object.keys(accuracyBreakdown).forEach(key => {
+      accuracyBreakdown[key] = Math.floor(accuracyBreakdown[key] * 0.3);
     });
-    totalXp = Math.floor(totalXp * 0.3);
+    accuracyXP = Math.floor(accuracyXP * 0.3);
   }
 
-  return { totalXp, xpBreakdown };
+  // STEP 3: Combine into final breakdown
+  // Courage XP is distributed evenly across archetypes for now
+  const couragePerArchetype = Math.floor(courageXP / 4);
+  const xpBreakdown = {
+    // NEW: Courage XP comes first
+    courage: courageXP,
+    courage_breakdown: courageBreakdown,
+    // Then accuracy per archetype
+    risk_taker: accuracyBreakdown.risk_taker + couragePerArchetype,
+    analyst: accuracyBreakdown.analyst + couragePerArchetype,
+    builder: accuracyBreakdown.builder + couragePerArchetype,
+    strategist: accuracyBreakdown.strategist + couragePerArchetype
+  };
+
+  // Total XP = Courage + Accuracy
+  const totalXp = courageXP + accuracyXP;
+
+  return { totalXp, xpBreakdown, courageXP, accuracyXP };
 };
 
 /**
@@ -263,8 +347,10 @@ export const shouldIncreaseAggregateLevel = (profile, levelChanges) => {
 export default {
   calculateProfile,
   calculateXPDistribution,
+  calculateCourageXP, // NEW: Friksi #2
   updateArchetype,
   calculateLevelProgression,
   calculateMicroDifficultyAdjustment,
   shouldIncreaseAggregateLevel
 };
+
