@@ -62,19 +62,10 @@ router.post('/follow-up', async (req, res) => {
     // Build personalized mentor prompt with visual state tone
     const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
 
-    // Generate response using OpenAI
-    const openai = (await import('../config/openai.js')).default;
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: mentorPrompt.system },
-        { role: 'user', content: mentorPrompt.user }
-      ],
-      temperature: 0.8,
-      max_tokens: 300
-    });
-
-    const response = completion.choices[0]?.message?.content?.trim();
+    // Generate response using AWS Bedrock Mid-level AI (Claude 3 Haiku)
+    const { invokeMidLevelAI } = await import('../config/awsBedrock.js');
+    const fullPrompt = `${mentorPrompt.system}\n\n${mentorPrompt.user}`;
+    const response = await invokeMidLevelAI({ prompt: fullPrompt });
 
     // Check if mentor decides to conclude (after minimum exchanges)
     const lang = profile?.language || 'en';

@@ -6,11 +6,14 @@
  * - Quick responses that don't need complex reasoning
  * - Decision to delegate to AI Agent
  * 
- * Cost: LOW (~$0.0005 per call using GPT-3.5-turbo / Claude Haiku)
+ * Uses Mid-level AI (Claude 3 Haiku) for balanced speed and accuracy
  */
 
-import { invokeLLM } from '../config/openai.js';
+import { invokeMidLevelAI } from '../config/awsBedrock.js';
 import SessionMemory from '../models/SessionMemory.js';
+
+// Use invokeMidLevelAI instead of invokeLLM
+const invokeLLM = invokeMidLevelAI;
 
 // ==========================================
 // LANGUAGE HELPER
@@ -139,8 +142,7 @@ Give 1 short message (1-2 sentences) that:
 ${langInst} No explanation, just the message.`;
 
         const response = await invokeLLM({
-            prompt,
-            model: 'gpt-3.5-turbo' // Use lightweight model
+            prompt
         });
 
         return typeof response === 'string' ? response : templates.pause.replace('{seconds}', context.seconds || '60');

@@ -1,60 +1,31 @@
-import OpenAI from 'openai';
+/**
+ * @deprecated This file is deprecated. Use ../config/awsBedrock.js instead.
+ * 
+ * This file previously used OpenRouter API for AI operations.
+ * The system has been migrated to AWS Bedrock with 3-tier AI:
+ * - Low: Mistral 7B (realtime)
+ * - Mid: Claude 3 Haiku (analysis)
+ * - Agent: Claude 3.5 Sonnet (generation)
+ * 
+ * Import from awsBedrock.js instead:
+ * import { invokeLowLevelAI, invokeMidLevelAI, invokeAgentAI } from '../config/awsBedrock.js';
+ */
+
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// OpenRouter API Configuration
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1'
-});
+console.warn('⚠️  [DEPRECATED] openai.js is deprecated. Please migrate to awsBedrock.js');
 
-// Default model for OpenRouter - using gpt-4o-mini (affordable and capable)
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+// Legacy exports for backward compatibility
+export const invokeLLM = async ({ prompt, response_json_schema = null, model = null }) => {
+  console.warn('⚠️  [DEPRECATED] invokeLLM from openai.js is deprecated. Use awsBedrock.js functions.');
 
-// Default model - use env var or fallback
-const getDefaultModel = () => {
-  return process.env.MODEL_NAME || DEFAULT_MODEL;
+  // Forward to AWS Bedrock
+  const { invokeAgentAI } = await import('./awsBedrock.js');
+  return invokeAgentAI({ prompt, response_json_schema });
 };
 
-export const invokeLLM = async ({ prompt, response_json_schema = null, model = getDefaultModel() }) => {
-  try {
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
-
-    const requestOptions = {
-      model,
-      messages,
-      temperature: 0.7,
-      max_tokens: 2000
-    };
-
-    if (response_json_schema) {
-      requestOptions.response_format = {
-        type: 'json_object'
-      };
-      // Add schema instruction to prompt
-      messages[0].content = prompt + '\n\nRespond with valid JSON matching this schema: ' + JSON.stringify(response_json_schema);
-    }
-
-    const completion = await openai.chat.completions.create(requestOptions);
-
-    const content = completion.choices[0].message.content;
-
-    if (response_json_schema) {
-      return JSON.parse(content);
-    }
-
-    return content;
-  } catch (error) {
-    console.error('OpenAI API Error:', error.message);
-    console.error('Full error:', JSON.stringify(error, null, 2));
-    throw new Error(`Failed to invoke LLM: ${error.message}`);
-  }
+export default {
+  invokeLLM
 };
-
-export default openai;

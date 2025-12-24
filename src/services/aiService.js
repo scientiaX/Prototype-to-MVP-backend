@@ -1,4 +1,7 @@
-import { invokeLLM } from '../config/openai.js';
+import { invokeAgentAI } from '../config/awsBedrock.js';
+
+// Use invokeAgentAI instead of invokeLLM for all functions in this service
+const invokeLLM = invokeAgentAI;
 
 /**
  * AI Agent Service - Layer 3 of 3-Layer AI Engine (Heavy/Complex Operations)
