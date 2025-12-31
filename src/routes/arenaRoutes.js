@@ -5,8 +5,10 @@ import Problem from '../models/Problem.js';
 import Achievement from '../models/Achievement.js';
 import Artifact from '../models/Artifact.js';
 import { evaluateSolution } from '../services/aiService.js';
-import { calculateXPDistribution, updateArchetype } from '../services/profileService.js';
+import { updateArchetype } from '../services/profileService.js';
 import * as orchestratorService from '../services/orchestratorService.js';
+import * as xpGuardService from '../services/xpGuardService.js';
+import * as exploitDetectionService from '../services/exploitDetectionService.js';
 
 const router = express.Router();
 
@@ -21,6 +23,16 @@ router.post('/start', async (req, res) => {
     const profile = await UserProfile.findOne({ user_id });
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    // SPEC #3: Check if user is in exploit cooldown
+    const cooldownCheck = await exploitDetectionService.isInCooldown(user_id);
+    if (cooldownCheck.in_cooldown) {
+      return res.status(429).json({
+        error: 'Cooldown active',
+        cooldown_until: cooldownCheck.until,
+        remaining_seconds: cooldownCheck.remaining_seconds
+      });
     }
 
     const session = await ArenaSession.create({
@@ -41,7 +53,7 @@ router.post('/start', async (req, res) => {
 
 router.post('/submit', async (req, res) => {
   try {
-    const { session_id, solution, time_elapsed } = req.body;
+    const { session_id, solution, time_elapsed, session_data } = req.body;
 
     if (!session_id || !solution) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -62,10 +74,91 @@ router.post('/submit', async (req, res) => {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
+    // ==========================================
+    // SPEC #6: Check XP Freeze State
+    // ==========================================
+    const freezeCheck = await xpGuardService.isXPFrozen(session.user_id);
+    if (freezeCheck.frozen) {
+      return res.status(429).json({
+        error: 'XP is frozen',
+        frozen_until: freezeCheck.until,
+        reason: 'Your XP is temporarily frozen. You can still practice but will not earn XP.'
+      });
+    }
+
+    // ==========================================
+    // SPEC #3: Check Exploit Cooldown
+    // ==========================================
+    const cooldownCheck = await exploitDetectionService.isInCooldown(session.user_id);
+    if (cooldownCheck.in_cooldown) {
+      return res.status(429).json({
+        error: 'Cooldown active',
+        cooldown_until: cooldownCheck.until,
+        remaining_seconds: cooldownCheck.remaining_seconds
+      });
+    }
+
+    // ==========================================
+    // SPEC #3: Run Exploit Detection BEFORE XP Award
+    // ==========================================
+    const exploitCheck = await exploitDetectionService.runFullExploitCheck(
+      session.user_id,
+      solution,
+      session_id,
+      problem.problem_id
+    );
+
+    if (exploitCheck.any_exploit_detected) {
+      // Record exploit in profile history
+      profile.exploit_history = profile.exploit_history || [];
+      profile.exploit_history.push({
+        detected_at: new Date(),
+        exploit_type: exploitCheck.cooldown.reason.includes('pattern') ? 'pattern_replay' :
+          exploitCheck.cooldown.reason.includes('switching') ? 'role_switching' : 'cooperative_farming',
+        cooldown_applied: exploitCheck.cooldown.duration_ms
+      });
+      await profile.save();
+
+      return res.status(429).json({
+        error: 'Exploit detected',
+        exploit_type: exploitCheck.cooldown.reason,
+        cooldown_seconds: exploitCheck.cooldown.duration_ms / 1000,
+        cooldown_until: new Date(Date.now() + exploitCheck.cooldown.duration_ms)
+      });
+    }
+
+    // ==========================================
+    // AI Evaluation (unchanged)
+    // ==========================================
     const evaluation = await evaluateSolution(problem, solution, time_elapsed);
 
-    const { totalXp, xpBreakdown } = calculateXPDistribution(evaluation, problem, profile);
+    // ==========================================
+    // SPEC #1 & #8: Isolated XP Calculation with Audit
+    // ==========================================
+    // Capture XP before changes
+    const xpBefore = {
+      risk_taker: profile.xp_risk_taker,
+      analyst: profile.xp_analyst,
+      builder: profile.xp_builder,
+      strategist: profile.xp_strategist
+    };
 
+    // Use isolated XP calculation (SPEC #1)
+    const { totalXp, xpBreakdown, courageXP, accuracyXP } = await xpGuardService.calculateIsolatedXP(
+      evaluation,
+      problem,
+      profile,
+      session_data || {}
+    );
+
+    // Validate XP award (SPEC #8)
+    const validation = xpGuardService.validateXPAward(xpBreakdown, 'arena_submit');
+    if (!validation.valid) {
+      console.error('XP validation failed:', validation.error);
+      return res.status(400).json({ error: 'XP validation failed', details: validation.error });
+    }
+
+    // Update session
     session.status = 'evaluated';
     session.submitted_at = new Date();
     session.solution_text = solution;
@@ -78,12 +171,48 @@ router.post('/submit', async (req, res) => {
     session.time_spent_seconds = time_elapsed;
     await session.save();
 
+    // Update profile XP
     profile.xp_risk_taker += xpBreakdown.risk_taker || 0;
     profile.xp_analyst += xpBreakdown.analyst || 0;
     profile.xp_builder += xpBreakdown.builder || 0;
     profile.xp_strategist += xpBreakdown.strategist || 0;
     profile.total_arenas_completed += 1;
 
+    // Capture XP after changes
+    const xpAfter = {
+      risk_taker: profile.xp_risk_taker,
+      analyst: profile.xp_analyst,
+      builder: profile.xp_builder,
+      strategist: profile.xp_strategist
+    };
+
+    // ==========================================
+    // SPEC #8: Create Immutable Audit Log
+    // ==========================================
+    await xpGuardService.createXPAuditLog(
+      session.user_id,
+      'award',
+      xpBefore,
+      xpAfter,
+      'arena_submit',
+      {
+        session_id: session_id,
+        problem_id: problem.problem_id,
+        problem_difficulty: problem.difficulty,
+        evaluation_summary: evaluation.evaluation?.substring(0, 200),
+        courage_xp: courageXP,
+        accuracy_xp: accuracyXP,
+        stagnation_detected: evaluation.stagnation_detected,
+        exploit_detected: false
+      }
+    );
+
+    // ==========================================
+    // SPEC #6: Update Stagnation State
+    // ==========================================
+    await xpGuardService.updateStagnationState(session.user_id, totalXp);
+
+    // Level up handling with IMMUTABLE Artifact (SPEC #4)
     if (evaluation.level_up_achieved && problem.difficulty > profile.current_difficulty) {
       profile.current_difficulty = problem.difficulty;
       profile.highest_difficulty_conquered = Math.max(
@@ -104,6 +233,7 @@ router.post('/submit', async (req, res) => {
         is_highest: problem.difficulty > profile.highest_difficulty_conquered
       });
 
+      // Create IMMUTABLE Artifact with XP snapshot (SPEC #4)
       await Artifact.create({
         user_id: session.user_id,
         problem_id: problem.problem_id,
@@ -114,7 +244,9 @@ router.post('/submit', async (req, res) => {
         insight: evaluation.insight,
         level_up_verified: true,
         arena_session_id: session._id.toString(),
-        conquered_at: new Date()
+        conquered_at: new Date(),
+        event_source: 'level_up',
+        xp_snapshot: xpAfter
       });
     }
 
@@ -126,7 +258,9 @@ router.post('/submit', async (req, res) => {
       evaluation,
       xp_earned: totalXp,
       xp_breakdown: xpBreakdown,
-      updated_profile: profile
+      updated_profile: profile,
+      xp_state: profile.xp_state,
+      stagnation_count: profile.stagnation_count
     });
   } catch (error) {
     console.error('Submit session error:', error);

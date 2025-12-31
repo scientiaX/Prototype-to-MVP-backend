@@ -164,7 +164,48 @@ const userProfileSchema = new mongoose.Schema({
   experience_proof: {
     type: String,
     maxLength: 1000
-  }
+  },
+
+  // ==========================================
+  // SPEC #6: XP State Machine & Stagnation
+  // ==========================================
+  xp_state: {
+    type: String,
+    enum: ['progressing', 'stagnating', 'frozen'],
+    default: 'progressing'
+  },
+  stagnation_count: {
+    type: Number,
+    default: 0
+  },
+  xp_frozen_until: {
+    type: Date
+  },
+
+  // ==========================================
+  // SPEC #3: Exploit Cooldown Tracking
+  // ==========================================
+  exploit_cooldown_until: {
+    type: Date
+  },
+  exploit_history: [{
+    detected_at: { type: Date, default: Date.now },
+    exploit_type: { type: String, enum: ['pattern_replay', 'role_switching', 'cooperative_farming'] },
+    cooldown_applied: { type: Number } // Duration in ms
+  }],
+
+  // ==========================================
+  // SPEC #7: Identity Binding (Anti-Reset)
+  // ==========================================
+  device_fingerprints: [{
+    fingerprint: { type: String },
+    device_info: { type: String },
+    first_seen: { type: Date, default: Date.now },
+    last_seen: { type: Date, default: Date.now }
+  }],
+  linked_accounts: [{
+    type: String // Other user_ids linked to this identity
+  }]
 }, {
   timestamps: true
 });

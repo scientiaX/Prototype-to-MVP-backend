@@ -13,6 +13,7 @@ import mentorRoutes from './routes/mentorRoutes.js';
 import userDataRoutes from './routes/userDataRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import entryRoutes from './routes/entryRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -76,7 +77,8 @@ app.get('/', (req, res) => {
       arena: '/api/arena',
       mentor: '/api/mentor',
       user: '/api/user',
-      entry: '/api/entry'
+      entry: '/api/entry',
+      admin: '/api/admin (read-only)'
     }
   });
 });
@@ -98,6 +100,7 @@ app.use('/api/arena', arenaRoutes);
 app.use('/api/mentor', mentorRoutes);
 app.use('/api/user', userDataRoutes);
 app.use('/api/entry', entryRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
