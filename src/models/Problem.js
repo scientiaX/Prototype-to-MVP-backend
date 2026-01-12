@@ -76,6 +76,12 @@ const problemSchema = new mongoose.Schema({
     type: Number,
     default: 30
   },
+  // Duration type label for arena classification
+  duration_type: {
+    type: String,
+    enum: ['quick', 'standard'], // quick = 10 min, standard = 30 min
+    default: 'standard'
+  },
   is_active: {
     type: Boolean,
     default: true

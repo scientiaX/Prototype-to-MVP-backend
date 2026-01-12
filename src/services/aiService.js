@@ -90,8 +90,9 @@ const identifyStrongArchetypes = (profile) => {
  * @param {Object} profile - User profile
  * @param {Object} sessionHistory - Optional session history
  * @param {number} durationMinutes - Target duration (10 for light, 30 for standard)
+ * @param {Array} completedProblems - Previously completed problems to avoid redundancy
  */
-export const generatePersonalizedProblem = async (profile, sessionHistory = null, durationMinutes = 30) => {
+export const generatePersonalizedProblem = async (profile, sessionHistory = null, durationMinutes = 30, completedProblems = []) => {
   const weakArchetypes = identifyWeakArchetypes(profile);
   const strongArchetypes = identifyStrongArchetypes(profile);
 
@@ -138,6 +139,27 @@ DURATION MODE: STANDARD (30 minutes)
 - Deep exploration expected
 - Problem should require 5-7 thoughtful exchanges`;
 
+  // Build uniqueness context from completed problems
+  let uniquenessGuidance = '';
+  if (completedProblems && completedProblems.length > 0) {
+    const problemsList = completedProblems.slice(0, 10).map((p, i) =>
+      `${i + 1}. "${p.title}" (${p.domain || 'unknown'} - ${p.role || 'unknown'})`
+    ).join('\n');
+
+    uniquenessGuidance = `
+UNIQUENESS REQUIREMENT - CRITICAL:
+User has completed ${completedProblems.length} problems. DO NOT generate similar problems:
+${problemsList}
+
+YOU MUST:
+1. Use a DIFFERENT industry/scenario than completed problems
+2. Use a DIFFERENT role/perspective if possible  
+3. Present a DIFFERENT type of core dilemma
+4. If same domain, go DEEPER or use significantly different angle
+5. User should NOT feel "I've seen this before"
+`;
+  }
+
   const prompt = `Generate a personalized problem-solving challenge.
 
 USER PROFILE:
@@ -180,7 +202,7 @@ Create a REAL-WORLD problem that:
 9. Is challenging but achievable for someone at this difficulty and experience level
 
 CRITICAL: This platform confronts users with hard choices. Don't soften the problem. Make it realistic and uncomfortable for their level.
-
+${uniquenessGuidance}
 ${getLanguageInstruction(profile)} Generate unique problem_id with format "PROB-{timestamp}".`;
 
   const response = await invokeLLM({
@@ -224,10 +246,14 @@ ${getLanguageInstruction(profile)} Generate unique problem_id with format "PROB-
 // ==========================================
 
 export const generateProblem = async (profile, customization = null) => {
-  // Check if customization only contains durationMinutes (new simplified flow)
-  if (!customization || (customization.durationMinutes && Object.keys(customization).length === 1)) {
+  // Extract completedProblems if provided
+  const completedProblems = customization?.completedProblems || [];
+
+  // Check if customization only contains durationMinutes (and optionally completedProblems)
+  const customKeys = Object.keys(customization || {}).filter(k => k !== 'completedProblems');
+  if (!customization || (customKeys.length <= 1 && customization.durationMinutes)) {
     const durationMinutes = customization?.durationMinutes || 30;
-    return await generatePersonalizedProblem(profile, null, durationMinutes);
+    return await generatePersonalizedProblem(profile, null, durationMinutes, completedProblems);
   }
 
   // Otherwise use custom parameters

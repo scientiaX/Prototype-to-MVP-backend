@@ -1,5 +1,6 @@
 import express from 'express';
 import Problem from '../models/Problem.js';
+import ArenaSession from '../models/ArenaSession.js';
 import { generateProblem } from '../services/aiService.js';
 
 const router = express.Router();
@@ -12,13 +13,45 @@ router.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const generatedProblem = await generateProblem(profile, customization);
+    // Fetch user's completed arena sessions to avoid duplicate problems
+    const completedSessions = await ArenaSession.find({
+      user_id: user_id,
+      status: 'evaluated'
+    }).select('problem_id').limit(20).sort({ submitted_at: -1 });
+
+    // Get the problem details for completed sessions
+    const completedProblemIds = completedSessions.map(s => s.problem_id);
+    const completedProblems = await Problem.find({
+      problem_id: { $in: completedProblemIds }
+    }).select('title context objective domain role_label');
+
+    // Format completed problems for AI context
+    const completedProblemsContext = completedProblems.map(p => ({
+      title: p.title,
+      context_summary: p.context?.substring(0, 150) + '...',
+      domain: p.domain,
+      role: p.role_label
+    }));
+
+    // Pass completed problems to AI for uniqueness
+    const enhancedCustomization = {
+      ...customization,
+      completedProblems: completedProblemsContext
+    };
+
+    const generatedProblem = await generateProblem(profile, enhancedCustomization);
+
+    // Determine duration type
+    const durationMinutes = customization?.durationMinutes || 30;
+    const durationType = durationMinutes <= 10 ? 'quick' : 'standard';
 
     // Normalize LLM output to match schema requirements
     const normalizedProblem = {
       ...generatedProblem,
       created_by: user_id,
       is_active: true,
+      duration_type: durationType,
+      estimated_time_minutes: durationMinutes,
       // Normalize enum values to lowercase
       domain: generatedProblem.domain?.toLowerCase() || 'business',
       archetype_focus: generatedProblem.archetype_focus?.toLowerCase()?.replace(/\s+/g, '_') || 'strategist'
