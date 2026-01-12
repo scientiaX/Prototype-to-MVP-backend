@@ -178,6 +178,49 @@ router.post('/submit', async (req, res) => {
     profile.xp_strategist += xpBreakdown.strategist || 0;
     profile.total_arenas_completed += 1;
 
+    // ==========================================
+    // STREAK & MONTHLY PROGRESS TRACKING
+    // ==========================================
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0]; // "2026-01-12"
+    const lastArenaDate = profile.last_arena_date;
+
+    if (lastArenaDate) {
+      const lastDateStr = new Date(lastArenaDate).toISOString().split('T')[0];
+      const daysDiff = Math.floor((today - new Date(lastArenaDate)) / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 0) {
+        // Same day - streak unchanged
+      } else if (daysDiff === 1) {
+        // Consecutive day - increment streak
+        profile.current_streak += 1;
+      } else {
+        // Missed days - reset streak to 1
+        profile.current_streak = 1;
+      }
+    } else {
+      // First arena - start streak
+      profile.current_streak = 1;
+    }
+
+    // Update longest streak
+    if (profile.current_streak > profile.longest_streak) {
+      profile.longest_streak = profile.current_streak;
+    }
+
+    // Update last arena date
+    profile.last_arena_date = today;
+
+    // Update monthly arenas
+    const currentMonth = today.toISOString().slice(0, 7); // "2026-01"
+    const monthIndex = profile.monthly_arenas?.findIndex(m => m.month === currentMonth);
+    if (monthIndex >= 0) {
+      profile.monthly_arenas[monthIndex].count += 1;
+    } else {
+      profile.monthly_arenas = profile.monthly_arenas || [];
+      profile.monthly_arenas.push({ month: currentMonth, count: 1 });
+    }
+
     // Capture XP after changes
     const xpAfter = {
       risk_taker: profile.xp_risk_taker,

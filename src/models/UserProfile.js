@@ -121,6 +121,24 @@ const userProfileSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // ==========================================
+  // STREAK & PROGRESS TRACKING
+  // ==========================================
+  current_streak: {
+    type: Number,
+    default: 0
+  },
+  longest_streak: {
+    type: Number,
+    default: 0
+  },
+  last_arena_date: {
+    type: Date
+  },
+  monthly_arenas: [{
+    month: { type: String }, // Format: "2026-01"
+    count: { type: Number, default: 0 }
+  }],
   calibration_completed: {
     type: Boolean,
     default: false
