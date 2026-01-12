@@ -87,8 +87,11 @@ const identifyStrongArchetypes = (profile) => {
 
 /**
  * Generate a personalized problem that trains weak archetypes and sharpens strong ones
+ * @param {Object} profile - User profile
+ * @param {Object} sessionHistory - Optional session history
+ * @param {number} durationMinutes - Target duration (10 for light, 30 for standard)
  */
-export const generatePersonalizedProblem = async (profile, sessionHistory = null) => {
+export const generatePersonalizedProblem = async (profile, sessionHistory = null, durationMinutes = 30) => {
   const weakArchetypes = identifyWeakArchetypes(profile);
   const strongArchetypes = identifyStrongArchetypes(profile);
 
@@ -115,6 +118,26 @@ export const generatePersonalizedProblem = async (profile, sessionHistory = null
     'adult': 'Use professional language. Full business/tech scenarios with real stakes, team management, investment decisions etc.'
   };
 
+  // Duration-based complexity adjustment
+  const isLightMode = durationMinutes <= 10;
+  const durationGuidance = isLightMode
+    ? `
+DURATION MODE: LIGHT (10 minutes)
+- Create a SIMPLER, more focused problem
+- Maximum 2 constraints (not more)
+- Single clear decision to make
+- Less context, more direct question
+- Suitable for quick practice sessions
+- Problem should be solvable with 2-3 short responses`
+    : `
+DURATION MODE: STANDARD (30 minutes)
+- Full complexity problem
+- 3-5 constraints allowed
+- Multi-layered decision required
+- Rich context with stakeholder considerations
+- Deep exploration expected
+- Problem should require 5-7 thoughtful exchanges`;
+
   const prompt = `Generate a personalized problem-solving challenge.
 
 USER PROFILE:
@@ -133,6 +156,8 @@ PERSONALIZATION TARGETS:
 - TRAIN (weak areas): ${weakArchetypes.join(', ') || 'none'}
 - SHARPEN (strong areas): ${strongArchetypes.join(', ') || 'none'}
 - Effective difficulty: ${effectiveDifficulty.toFixed(1)} (base ${baseDifficulty} + experience ${experienceAdjustment} + micro ${microOffset.toFixed(2)})
+- Target duration: ${durationMinutes} minutes
+${durationGuidance}
 
 ARCHETYPE TRAINING GUIDE:
 - risk_taker: Include high-stakes decisions with incomplete information, time pressure
@@ -182,6 +207,7 @@ ${getLanguageInstruction(profile)} Generate unique problem_id with format "PROB-
   // Add personalization metadata
   if (response) {
     response.generated_for_user = profile.user_id;
+    response.estimated_time_minutes = durationMinutes; // Ensure correct duration is set
     response.personalization_factors = {
       target_archetype_training: weakArchetypes,
       target_archetype_sharpening: strongArchetypes,
@@ -198,9 +224,10 @@ ${getLanguageInstruction(profile)} Generate unique problem_id with format "PROB-
 // ==========================================
 
 export const generateProblem = async (profile, customization = null) => {
-  // If no customization, use personalized generation
-  if (!customization) {
-    return await generatePersonalizedProblem(profile);
+  // Check if customization only contains durationMinutes (new simplified flow)
+  if (!customization || (customization.durationMinutes && Object.keys(customization).length === 1)) {
+    const durationMinutes = customization?.durationMinutes || 30;
+    return await generatePersonalizedProblem(profile, null, durationMinutes);
   }
 
   // Otherwise use custom parameters
