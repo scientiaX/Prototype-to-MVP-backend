@@ -11,9 +11,3 @@ coverage
 dist
 build
 .git
-.github
-docs
-README.md
-*.md
-.gitignore
-docker-compose.yml
