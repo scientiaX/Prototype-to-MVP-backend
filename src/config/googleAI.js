@@ -1,15 +1,15 @@
 /**
- * AWS Bedrock Configuration - 3-Tier AI System
+ * Google AI Configuration - 3-Tier AI System
  * 
- * Uses Amazon Bedrock native API Keys (bearer token authentication)
+ * Uses Google AI / Gemini API
  * 
- * Environment Variable: AWS_AI_API
- * Format: The full API key from Amazon Bedrock console (starts with ABSK...)
+ * Environment Variable: AI_API
+ * Format: Your Google AI API Key from Google AI Studio
  * 
  * Model Tiers:
- * - Low (Mistral 7B): Fast realtime responses, reminders, small steps
- * - Mid (Claude 3 Haiku): Planning, analysis, considerations during arena
- * - Agent (Claude 3.5 Sonnet): Problem generation, XP calculation, evaluation
+ * - Low (Gemini 1.5 Flash): Fast realtime responses, reminders, small steps
+ * - Mid (Gemini 1.5 Flash): Planning, analysis, considerations during arena
+ * - Agent (Gemini 1.5 Pro): Problem generation, XP calculation, evaluation
  */
 
 import dotenv from 'dotenv';
@@ -18,52 +18,38 @@ dotenv.config();
 
 // Model IDs for each tier
 const MODEL_IDS = {
-    LOW: 'mistral.mistral-7b-instruct-v0:2',
-    MID: 'anthropic.claude-3-haiku-20240307-v1:0',
-    AGENT: 'anthropic.claude-3-5-sonnet-20241022-v2:0'
-};
-
-// Parse region from API key name (BedrockAPIKey-{identifier}-at-{accountId})
-const parseRegionFromApiKey = (apiKey) => {
-    try {
-        // Decode the ABSK key to get the key name
-        const decoded = Buffer.from(apiKey.substring(4), 'base64').toString('utf-8');
-        // Try to find region pattern - default to us-east-1 if not found
-        // The key name format is typically: BedrockAPIKey-{id}-at-{accountId}
-        return 'us-east-1'; // Default region - user can override with AWS_REGION env var
-    } catch (e) {
-        return 'us-east-1';
-    }
+    LOW: 'gemini-1.5-flash',
+    MID: 'gemini-1.5-flash',
+    AGENT: 'gemini-1.5-pro'
 };
 
 // Get configuration
 const getConfig = () => {
-    const apiKey = process.env.AWS_AI_API;
-    const region = process.env.AWS_REGION || parseRegionFromApiKey(apiKey || '') || 'us-east-1';
+    const apiKey = process.env.AI_API;
 
     if (!apiKey) {
-        console.warn('[AWS Bedrock] AWS_AI_API not set. AI features will not work.');
+        console.warn('[Google AI] AI_API not set. AI features will not work.');
         return null;
     }
 
-    console.log('[AWS Bedrock] Using API key authentication, region:', region);
+    console.log('[Google AI] Using API key authentication');
 
-    return { apiKey, region };
+    return { apiKey };
 };
 
 /**
- * Invoke a Bedrock model using the Converse API with API key authentication
+ * Invoke a Google AI model
  */
 const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN') => {
     const config = getConfig();
     if (!config) {
-        throw new Error('AWS Bedrock not configured. Check AWS_AI_API environment variable.');
+        throw new Error('Google AI not configured. Check AI_API environment variable.');
     }
 
-    const { apiKey, region } = config;
+    const { apiKey } = config;
 
-    // Build the request for Bedrock Converse API
-    const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/converse`;
+    // Build the request for Google AI API
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
     // Format the message content
     let messageContent = prompt;
@@ -72,21 +58,25 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
     }
 
     const requestBody = {
-        messages: [
+        contents: [
             {
-                role: 'user',
-                content: [
+                parts: [
                     {
                         text: messageContent
                     }
                 ]
             }
         ],
-        inferenceConfig: {
-            maxTokens: 2000,
+        generationConfig: {
+            maxOutputTokens: 2000,
             temperature: 0.7
         }
     };
+
+    // If JSON schema is provided, request JSON output
+    if (jsonSchema) {
+        requestBody.generationConfig.responseMimeType = 'application/json';
+    }
 
     const startTime = Date.now();
 
@@ -94,9 +84,7 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-                'Accept': 'application/json'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody)
         });
@@ -108,14 +96,14 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
 
         const data = await response.json();
         const elapsed = Date.now() - startTime;
-        console.log(`[AWS Bedrock - ${tier}] Model: ${modelId}, Time: ${elapsed}ms`);
+        console.log(`[Google AI - ${tier}] Model: ${modelId}, Time: ${elapsed}ms`);
 
         // Extract text from response
         let content = '';
-        if (data.output?.message?.content) {
-            content = data.output.message.content
-                .filter(c => c.text)
-                .map(c => c.text)
+        if (data.candidates && data.candidates[0]?.content?.parts) {
+            content = data.candidates[0].content.parts
+                .filter(p => p.text)
+                .map(p => p.text)
                 .join('');
         }
 
@@ -129,7 +117,7 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
                 }
                 return JSON.parse(content);
             } catch (parseError) {
-                console.warn(`[AWS Bedrock - ${tier}] Failed to parse JSON response, returning raw content`);
+                console.warn(`[Google AI - ${tier}] Failed to parse JSON response, returning raw content`);
                 return content;
             }
         }
@@ -138,8 +126,8 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
 
     } catch (error) {
         const elapsed = Date.now() - startTime;
-        console.error(`[AWS Bedrock - ${tier}] Error after ${elapsed}ms:`, error.message);
-        throw new Error(`AWS Bedrock API Error (${tier}): ${error.message}`);
+        console.error(`[Google AI - ${tier}] Error after ${elapsed}ms:`, error.message);
+        throw new Error(`Google AI API Error (${tier}): ${error.message}`);
     }
 };
 
@@ -148,7 +136,7 @@ const invokeModel = async (modelId, prompt, jsonSchema = null, tier = 'UNKNOWN')
 // ==========================================
 
 /**
- * Low-level AI (Mistral 7B) - Fast realtime operations
+ * Low-level AI (Gemini Flash) - Fast realtime operations
  * Use for: reminders, next micro-steps, simple responses during arena
  */
 export const invokeLowLevelAI = async ({ prompt, response_json_schema = null }) => {
@@ -156,7 +144,7 @@ export const invokeLowLevelAI = async ({ prompt, response_json_schema = null }) 
 };
 
 /**
- * Mid-level AI (Claude 3 Haiku) - Balanced speed and accuracy
+ * Mid-level AI (Gemini Flash) - Balanced speed and accuracy
  * Use for: planning next steps, analysis, considerations during arena
  */
 export const invokeMidLevelAI = async ({ prompt, response_json_schema = null }) => {
@@ -164,7 +152,7 @@ export const invokeMidLevelAI = async ({ prompt, response_json_schema = null }) 
 };
 
 /**
- * Agent-level AI (Claude 3.5 Sonnet) - High accuracy for complex tasks
+ * Agent-level AI (Gemini Pro) - High accuracy for complex tasks
  * Use for: problem generation, XP calculation, full evaluation
  */
 export const invokeAgentAI = async ({ prompt, response_json_schema = null }) => {
@@ -173,7 +161,7 @@ export const invokeAgentAI = async ({ prompt, response_json_schema = null }) => 
 
 // Legacy compatibility - uses Agent level by default
 export const invokeLLM = async ({ prompt, response_json_schema = null, model = null }) => {
-    console.warn('[AWS Bedrock] Using legacy invokeLLM - consider using tier-specific functions');
+    console.warn('[Google AI] Using legacy invokeLLM - consider using tier-specific functions');
     return invokeAgentAI({ prompt, response_json_schema });
 };
 

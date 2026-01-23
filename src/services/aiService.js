@@ -1,4 +1,4 @@
-import { invokeAgentAI } from '../config/awsBedrock.js';
+import { invokeAgentAI } from '../config/googleAI.js';
 
 // Use invokeAgentAI instead of invokeLLM for all functions in this service
 const invokeLLM = invokeAgentAI;

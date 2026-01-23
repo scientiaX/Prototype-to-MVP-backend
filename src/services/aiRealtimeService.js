@@ -9,7 +9,7 @@
  * Uses Low-level AI (Mistral 7B) for maximum speed and lowest cost
  */
 
-import { invokeLowLevelAI } from '../config/awsBedrock.js';
+import { invokeLowLevelAI } from '../config/googleAI.js';
 
 // ==========================================
 // LANGUAGE HELPER
