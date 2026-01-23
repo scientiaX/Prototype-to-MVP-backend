@@ -1,4 +1,4 @@
-name: Deploy backend
+name: Deploy Backend
 
 on:
   push:
@@ -19,11 +19,12 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          cd ~/apps/Prototype-to-MVP-frontend
+          cd ~/apps/Prototype-to-MVP-backend
           git pull
-          docker build -t frontend .
-          docker rm -f frontend || true
+          docker build -t backend .
+          docker rm -f backend || true
           docker run -d \
-            --name frontend \
-            -p 127.0.0.1:8080:80 \
-            frontend
+            --name backend \
+            -p 127.0.0.1:3001:3001 \
+            --env-file .env \
+            backend
