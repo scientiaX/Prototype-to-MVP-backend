@@ -17,10 +17,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Model IDs for each tier
+// Updated to use available models (gemini-1.5 models are deprecated)
 const MODEL_IDS = {
-    LOW: 'gemini-1.5-flash',
-    MID: 'gemini-1.5-flash',
-    AGENT: 'gemini-1.5-pro'
+    LOW: 'gemini-2.0-flash',
+    MID: 'gemini-2.0-flash',
+    AGENT: 'gemini-2.5-pro'
 };
 
 // Get configuration
