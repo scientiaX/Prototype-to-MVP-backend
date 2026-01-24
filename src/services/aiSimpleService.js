@@ -6,10 +6,11 @@
  * - Quick responses that don't need complex reasoning
  * - Decision to delegate to AI Agent
  * 
- * Uses Mid-level AI (Claude 3 Haiku) for balanced speed and accuracy
+ * Uses Cloudflare Workers AI for quick arena responses (no RPM limit)
+ * Fallback: Uses templates if AI unavailable
  */
 
-import { invokeMidLevelAI } from '../config/groqAI.js';
+import { invokeMidLevelAI } from '../config/cloudflareAI.js';
 import SessionMemory from '../models/SessionMemory.js';
 
 // Use invokeMidLevelAI instead of invokeLLM

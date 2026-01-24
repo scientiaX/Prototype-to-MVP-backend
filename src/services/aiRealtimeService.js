@@ -6,10 +6,11 @@
  * - Simple reminders and encouragements
  * - Quick next-step suggestions that don't need deep reasoning
  * 
- * Uses Low-level AI (Mistral 7B) for maximum speed and lowest cost
+ * Uses Cloudflare Workers AI for realtime responses (no RPM limit)
+ * Fallback: Uses templates if AI unavailable
  */
 
-import { invokeLowLevelAI } from '../config/groqAI.js';
+import { invokeLowLevelAI } from '../config/cloudflareAI.js';
 
 // ==========================================
 // LANGUAGE HELPER
