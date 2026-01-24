@@ -7,7 +7,7 @@
  * - Silent calibration from decisions
  */
 
-import { invokeAgentAI } from '../config/awsBedrock.js';
+import { invokeAgentAI } from '../config/googleAI.js';
 
 const invokeLLM = invokeAgentAI;
 
