@@ -193,8 +193,8 @@ router.post('/follow-up', async (req, res) => {
     // Build personalized mentor prompt with visual state tone
     const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
 
-    // Generate response using AWS Bedrock Mid-level AI (Claude 3 Haiku)
-    const { invokeMidLevelAI } = await import('../config/awsBedrock.js');
+    // Generate response using Cloudflare AI (no RPM limit for realtime)
+    const { invokeMidLevelAI } = await import('../config/cloudflareAI.js');
     const fullPrompt = `${mentorPrompt.system}\n\n${mentorPrompt.user}`;
     const response = await invokeMidLevelAI({ prompt: fullPrompt });
 
@@ -214,22 +214,41 @@ router.post('/follow-up', async (req, res) => {
     });
   } catch (error) {
     console.error('Follow-up generation error:', error);
-    // Personalized fallback based on exchange count - check profile language
+    // Personalized fallback based on exchange count - more variety to prevent repetition
     const profile = req.body.user_id ? await UserProfile.findOne({ user_id: req.body.user_id }).catch(() => null) : null;
     const lang = profile?.language || 'en';
+    const exchangeIdx = req.body.exchange_count || 0;
     const fallbacks = lang === 'id' ? [
-      "Oke, menarik. Tapi apa yang membuatmu yakin dengan pilihan ini?",
-      "Hmm, saya lihat alasanmu. Tapi bagaimana kalau ternyata asumsimu salah?",
-      "Coba bayangkan kamu adalah stakeholder yang paling dirugikan. Apa reaksimu?",
-      "Sebelum lanjut - apa satu hal yang masih bikin kamu ragu?"
+      "Apa yang membuatmu yakin dengan pilihan ini?",
+      "Kalau ternyata asumsimu salah, apa yang terjadi?",
+      "Siapa yang paling dirugikan dari keputusan ini?",
+      "Apa satu hal yang masih bikin kamu ragu?",
+      "Langkah konkret pertamamu apa?",
+      "Apa risiko terburuk yang bisa terjadi?",
+      "Berapa lama kamu butuh untuk eksekusi ini?",
+      "Ada alternatif lain yang kamu pertimbangkan?",
+      "Kalau deadline maju seminggu, apa yang berubah?",
+      "Apa yang akan kamu korbankan untuk ini?",
+      "Siapa yang perlu kamu ajak bicara dulu?",
+      "Apa ukuran suksesnya?"
     ] : [
-      "Interesting. But what makes you confident about this choice?",
-      "I see your reasoning. But what if your assumption turns out to be wrong?",
-      "Imagine you're the stakeholder who loses the most. What's your reaction?",
-      "Before we continue - what's one thing that still makes you doubt?"
+      "What makes you confident about this choice?",
+      "If your assumption is wrong, what happens?",
+      "Who loses the most from this decision?",
+      "What's one thing that still makes you doubt?",
+      "What's your first concrete step?",
+      "What's the worst-case risk?",
+      "How long do you need to execute this?",
+      "Any alternatives you considered?",
+      "If deadline moves up a week, what changes?",
+      "What are you willing to sacrifice for this?",
+      "Who do you need to talk to first?",
+      "What's the success metric?"
     ];
+    // Use random selection instead of sequential to avoid obvious patterns
+    const randomIdx = (exchangeIdx + Math.floor(Math.random() * 5)) % fallbacks.length;
     res.json({
-      question: fallbacks[(req.body.exchange_count || 0) % fallbacks.length],
+      question: fallbacks[randomIdx],
       type: 'follow_up'
     });
   }
