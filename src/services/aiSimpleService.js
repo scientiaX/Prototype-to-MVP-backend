@@ -9,7 +9,7 @@
  * Uses Mid-level AI (Claude 3 Haiku) for balanced speed and accuracy
  */
 
-import { invokeMidLevelAI } from '../config/googleAI.js';
+import { invokeMidLevelAI } from '../config/groqAI.js';
 import SessionMemory from '../models/SessionMemory.js';
 
 // Use invokeMidLevelAI instead of invokeLLM

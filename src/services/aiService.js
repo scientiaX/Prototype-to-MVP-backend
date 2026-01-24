@@ -1,6 +1,7 @@
-import { invokeAgentAI } from '../config/googleAI.js';
+import { invokeAgentAI } from '../config/groqAI.js';
 
 // Use invokeAgentAI instead of invokeLLM for all functions in this service
+// Now using Groq AI (Llama 3.3 70B) for better free tier limits
 const invokeLLM = invokeAgentAI;
 
 /**

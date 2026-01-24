@@ -7,7 +7,7 @@
  * - Silent calibration from decisions
  */
 
-import { invokeAgentAI } from '../config/googleAI.js';
+import { invokeAgentAI } from '../config/groqAI.js';
 
 const invokeLLM = invokeAgentAI;
 

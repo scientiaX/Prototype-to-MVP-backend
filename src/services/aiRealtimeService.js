@@ -9,7 +9,7 @@
  * Uses Low-level AI (Mistral 7B) for maximum speed and lowest cost
  */
 
-import { invokeLowLevelAI } from '../config/googleAI.js';
+import { invokeLowLevelAI } from '../config/groqAI.js';
 
 // ==========================================
 // LANGUAGE HELPER
