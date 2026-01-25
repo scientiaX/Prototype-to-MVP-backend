@@ -1,12 +1,17 @@
-# NovaxArena System Implementation Walkthrough
+# Panduan Implementasi Sistem NovaxArena
 
-## Overview
+## Ringkasan
 
-Sistem EXP, Level, Archetype, dan AI Engine untuk problem-solving dengan mentor AI yang interaktif.
+Sistem EXP, Level, Archetype, dan AI Engine untuk problem-solving dengan mentor AI yang interaktif (Mendukung Bahasa Inggris & Indonesia).
 
 ---
 
-## Architecture
+## Arsitektur
+
+### Durasi Arena
+- **Quick Arena**: 5 menit
+- **Standard Arena**: 15 menit
+
 
 ```mermaid
 graph TB
