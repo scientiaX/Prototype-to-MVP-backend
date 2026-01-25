@@ -41,9 +41,9 @@ router.post('/generate', async (req, res) => {
 
     const generatedProblem = await generateProblem(profile, enhancedCustomization);
 
-    // Determine duration type
-    const durationMinutes = customization?.durationMinutes || 30;
-    const durationType = durationMinutes <= 10 ? 'quick' : 'standard';
+    // Determine duration type (quick: <=5min, standard: >5min)
+    const durationMinutes = customization?.durationMinutes || 15;
+    const durationType = durationMinutes <= 5 ? 'quick' : 'standard';
 
     // Normalize LLM output to match schema requirements
     const normalizedProblem = {

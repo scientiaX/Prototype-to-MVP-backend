@@ -167,6 +167,7 @@ router.post('/question', async (req, res) => {
 /**
  * Generate personalized mentor response based on user's answer
  * Responses can be: follow-up questions, small explanations, tasks, reflections
+ * Now with dynamic interaction type selection (text vs options)
  */
 router.post('/follow-up', async (req, res) => {
   try {
@@ -183,11 +184,46 @@ router.post('/follow-up', async (req, res) => {
 
     // Get user profile for personalization
     const profile = user_id ? await UserProfile.findOne({ user_id }) : null;
+    const lang = profile?.language || 'en';
 
-    // Determine response type based on exchange count and user behavior
+    // Determine if this is quick mode (shorter session)
+    const isQuickMode = problem.duration_type === 'quick';
+    const conclusionThreshold = isQuickMode ? 2 : 3; // Quick: 2 exchanges, Standard: 3
+
+    // Determine response type based on exchange count
     let responseType = 'follow_up';
-    if (exchange_count >= 3) {
+    if (exchange_count >= conclusionThreshold - 1) {
       responseType = 'stress_test';
+    }
+
+    // Dynamic interaction type selection (vary between text and options)
+    // Pattern: First exchange = text, then alternate or use AI decision
+    let interactionType = 'TEXT_COMMIT'; // default
+    let generatedOptions = null;
+
+    // Every other exchange could be option-based for variety
+    if (exchange_count > 1 && exchange_count % 2 === 0) {
+      interactionType = 'OPTION_SELECT';
+      // Generate contextual options based on the problem
+      const optionsPrompt = lang === 'id'
+        ? `Berdasarkan respons user: "${user_response}", buat 2-3 pilihan opsi singkat untuk pertanyaan lanjutan. Format: opsi1|opsi2|opsi3`
+        : `Based on user response: "${user_response}", create 2-3 short option choices for follow-up. Format: option1|option2|option3`;
+
+      try {
+        const { invokeLowLevelAI } = await import('../config/cloudflareAI.js');
+        const optionsResponse = await invokeLowLevelAI({ prompt: optionsPrompt });
+        if (optionsResponse) {
+          generatedOptions = optionsResponse.split('|').map(o => o.trim()).filter(o => o.length > 0).slice(0, 3);
+          if (generatedOptions.length < 2) {
+            // Fallback if AI didn't generate enough options
+            interactionType = 'TEXT_COMMIT';
+            generatedOptions = null;
+          }
+        }
+      } catch (optErr) {
+        console.error('Options generation failed, falling back to text:', optErr);
+        interactionType = 'TEXT_COMMIT';
+      }
     }
 
     // Build personalized mentor prompt with visual state tone
@@ -199,9 +235,8 @@ router.post('/follow-up', async (req, res) => {
     const response = await invokeMidLevelAI({ prompt: fullPrompt });
 
     // Check if mentor decides to conclude (after minimum exchanges)
-    const lang = profile?.language || 'en';
     const concludeMarker = lang === 'id' ? '[selesai]' : '[conclude]';
-    const shouldConclude = exchange_count >= 4 && response?.toLowerCase().includes(concludeMarker.toLowerCase());
+    const shouldConclude = exchange_count >= conclusionThreshold && response?.toLowerCase().includes(concludeMarker.toLowerCase());
 
     const defaultFollowUp = lang === 'id'
       ? "Bisa ceritakan lebih lanjut tentang alasanmu?"
@@ -210,7 +245,9 @@ router.post('/follow-up', async (req, res) => {
     res.json({
       question: response?.replace(concludeMarker, '').replace('[selesai]', '').replace('[conclude]', '').trim() || defaultFollowUp,
       type: responseType,
-      should_conclude: shouldConclude
+      should_conclude: shouldConclude,
+      interaction_type: interactionType,
+      options: generatedOptions
     });
   } catch (error) {
     console.error('Follow-up generation error:', error);

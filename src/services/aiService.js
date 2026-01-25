@@ -120,25 +120,25 @@ export const generatePersonalizedProblem = async (profile, sessionHistory = null
     'adult': 'Use professional language. Full business/tech scenarios with real stakes, team management, investment decisions etc.'
   };
 
-  // Duration-based complexity adjustment
-  const isLightMode = durationMinutes <= 10;
-  const durationGuidance = isLightMode
+  // Duration-based complexity adjustment (updated: lighter experience)
+  const isQuickMode = durationMinutes <= 5;
+  const durationGuidance = isQuickMode
     ? `
-DURATION MODE: LIGHT (10 minutes)
-- Create a SIMPLER, more focused problem
-- Maximum 2 constraints (not more)
-- Single clear decision to make
-- Less context, more direct question
-- Suitable for quick practice sessions
-- Problem should be solvable with 2-3 short responses`
+DURATION MODE: QUICK (4-5 minutes)
+- Create a VERY SIMPLE, focused problem
+- Maximum 1-2 constraints (keep minimal)
+- Single clear decision point
+- Minimal context, direct question
+- Problem should be solvable with 1-2 exchanges
+- Perfect for quick decision-making practice`
     : `
-DURATION MODE: STANDARD (30 minutes)
-- Full complexity problem
-- 3-5 constraints allowed
-- Multi-layered decision required
-- Rich context with stakeholder considerations
-- Deep exploration expected
-- Problem should require 5-7 thoughtful exchanges`;
+DURATION MODE: STANDARD (15 minutes)
+- Moderate complexity problem
+- 2-3 constraints allowed
+- Clear decision with some nuance
+- Adequate context with stakeholder considerations
+- Problem should require 3-4 thoughtful exchanges
+- Balance depth with efficiency`;
 
   // Build uniqueness context from completed problems
   let uniquenessGuidance = '';
