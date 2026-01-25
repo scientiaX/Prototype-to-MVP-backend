@@ -8,6 +8,82 @@ const router = express.Router();
 
 /**
  * ============================================
+ * CONTEXTUAL COUNTDOWN SYSTEM
+ * ============================================
+ * Determines when to show pressure/countdown based on:
+ * - Problem type (quick vs standard)
+ * - User archetype (analyst = tends to overthink)
+ * - Exchange count (later = more pressure)
+ * - Response patterns (short responses = might need options)
+ */
+function calculateCountdownSignal(problem, profile, exchangeCount, userResponse, visualState) {
+  const archetype = profile?.primary_archetype || 'analyst';
+  const isQuickMode = problem?.duration_type === 'quick';
+  const responseLength = userResponse?.length || 0;
+
+  let showCountdown = false;
+  let urgencyReason = null;
+  let suggestedVisualState = visualState || 'calm';
+
+  // Rule 1: Quick mode = earlier pressure
+  const pressureThreshold = isQuickMode ? 2 : 3;
+
+  // Rule 2: Archetype-based pressure
+  const archetypePressureRules = {
+    analyst: {
+      pressureAt: pressureThreshold,
+      reason_id: 'Analyst cenderung overthink. Waktunya decide.',
+      reason_en: 'Analysts tend to overthink. Time to decide.'
+    },
+    risk_taker: {
+      pressureAt: pressureThreshold + 1, // More lenient, they decide fast anyway
+      reason_id: 'Sudah cukup info. Kunci.',
+      reason_en: 'Enough info. Lock it.'
+    },
+    builder: {
+      pressureAt: pressureThreshold,
+      reason_id: 'Action time. Jangan terlalu banyak planning.',
+      reason_en: 'Action time. Don\'t over-plan.'
+    },
+    strategist: {
+      pressureAt: pressureThreshold + 1, // They need big picture time
+      reason_id: 'Big picture sudah terbentuk. Commit.',
+      reason_en: 'Big picture is formed. Commit.'
+    }
+  };
+
+  const rule = archetypePressureRules[archetype] || archetypePressureRules.analyst;
+  const lang = profile?.language || 'id';
+
+  // Rule 3: Exchange count triggers
+  if (exchangeCount >= rule.pressureAt) {
+    showCountdown = true;
+    urgencyReason = lang === 'id' ? rule.reason_id : rule.reason_en;
+    suggestedVisualState = 'urgent';
+  }
+
+  // Rule 4: Very high exchange = critical
+  if (exchangeCount >= rule.pressureAt + 2) {
+    suggestedVisualState = 'critical';
+    urgencyReason = lang === 'id' ? 'Waktu hampir habis.' : 'Time almost up.';
+  }
+
+  // Rule 5: Very short responses might indicate confusion - don't pressure
+  if (responseLength < 20 && exchangeCount <= 2) {
+    showCountdown = false;
+    suggestedVisualState = 'calm';
+    urgencyReason = null;
+  }
+
+  return {
+    show_countdown: showCountdown,
+    urgency_reason: urgencyReason,
+    suggested_visual_state: suggestedVisualState
+  };
+}
+
+/**
+ * ============================================
  * FRIKSI #3: EXTERNALIZED FAILURE LANGUAGE
  * ============================================
  * Templates untuk menyalahkan sistem/skenario, bukan user
@@ -261,6 +337,9 @@ router.post('/follow-up', async (req, res) => {
     const shouldConclude = exchange_count >= conclusionThreshold && cleanedResponse.toLowerCase().includes(concludeMarker.toLowerCase());
     cleanedResponse = cleanedResponse.replace(/\[selesai\]|\[conclude\]/gi, '').trim();
 
+    // Calculate contextual countdown signals
+    const countdownSignal = calculateCountdownSignal(problem, profile, exchange_count, user_response, visual_state);
+
     const defaultFollowUp = lang === 'id'
       ? "Apa langkah pertamamu?"
       : "What's your first step?";
@@ -270,7 +349,11 @@ router.post('/follow-up', async (req, res) => {
       type: responseType,
       should_conclude: shouldConclude,
       interaction_type: interactionType,
-      options: generatedOptions
+      options: generatedOptions,
+      // Contextual countdown signals
+      show_countdown: countdownSignal.show_countdown,
+      urgency_reason: countdownSignal.urgency_reason,
+      suggested_visual_state: countdownSignal.suggested_visual_state
     });
   } catch (error) {
     console.error('Follow-up generation error:', error);
