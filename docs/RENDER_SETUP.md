@@ -35,6 +35,14 @@
    OPENAI_BASE_URL=https://api.cometapi.com/v1
    JWT_SECRET=your-super-secure-jwt-secret
    CORS_ORIGIN=https://your-frontend-url.com
+
+   # Groq AI (for problem generation, evaluation)
+   AI_API=your-groq-api-key-1
+   AI_API2=your-groq-api-key-2
+
+   # Cloudflare Workers AI (for realtime follow-ups)
+   AI_API_RESPONSE=your-cloudflare-api-token
+   CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
    ```
 
 ### Option 2: Render Private Services (Paid)
