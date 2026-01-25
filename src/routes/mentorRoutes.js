@@ -405,6 +405,44 @@ router.post('/follow-up', async (req, res) => {
       responseType = 'stress_test';
     }
 
+    // ==========================================
+    // SMART INTERACTION TYPE SELECTION
+    // Early = quick actions (no keyboard)
+    // Mid = chips
+    // Late = text
+    // ==========================================
+    let preferredInteractionType = 'TEXT_COMMIT';
+    let defaultOptions = null;
+
+    if (exchange_count === 1) {
+      // First exchange: Quick emoji choice (instant, game-like)
+      preferredInteractionType = 'QUICK_CHOICE';
+      defaultOptions = lang === 'id'
+        ? [
+          { emoji: '✅', label: 'Setuju' },
+          { emoji: '🤔', label: 'Perlu pikir' },
+          { emoji: '❌', label: 'Tidak' }
+        ]
+        : [
+          { emoji: '✅', label: 'Agree' },
+          { emoji: '🤔', label: 'Need to think' },
+          { emoji: '❌', label: 'Disagree' }
+        ];
+    } else if (exchange_count === 2) {
+      // Second exchange: Spectrum slider (tendency)
+      preferredInteractionType = 'SPECTRUM';
+      defaultOptions = lang === 'id'
+        ? ['Tidak yakin', 'Sangat yakin']
+        : ['Not sure', 'Very sure'];
+    } else if (exchange_count === 3) {
+      // Third exchange: Chip selection
+      preferredInteractionType = 'CHIP_SELECT';
+      defaultOptions = lang === 'id'
+        ? ['Prioritas tinggi', 'Bisa ditunda', 'Butuh diskusi', 'Siap eksekusi']
+        : ['High priority', 'Can wait', 'Need discussion', 'Ready to execute'];
+    }
+    // After exchange 3: Allow AI to decide or default to text
+
     // Build personalized mentor prompt with visual state tone
     const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
     const fullPrompt = `${mentorPrompt.system}\n\n${mentorPrompt.user}`;
@@ -483,12 +521,16 @@ router.post('/follow-up', async (req, res) => {
       ? "Apa langkah pertamamu?"
       : "What's your first step?";
 
+    // Use preferred interaction type for early exchanges (game-like), AI-parsed for later
+    const finalInteractionType = exchange_count <= 3 ? preferredInteractionType : (interactionType || 'TEXT_COMMIT');
+    const finalOptions = exchange_count <= 3 ? defaultOptions : generatedOptions;
+
     res.json({
       question: cleanedResponse || defaultFollowUp,
       type: responseType,
       should_conclude: shouldConclude,
-      interaction_type: interactionType,
-      options: generatedOptions,
+      interaction_type: finalInteractionType,
+      options: finalOptions,
       // Contextual countdown signals
       show_countdown: countdownSignal.show_countdown,
       urgency_reason: countdownSignal.urgency_reason,
