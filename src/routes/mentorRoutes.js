@@ -84,6 +84,139 @@ function calculateCountdownSignal(problem, profile, exchangeCount, userResponse,
 
 /**
  * ============================================
+ * SOCIAL COMPARISON SYSTEM (Event-based)
+ * ============================================
+ * Occasionally shows how other users with similar archetype decided
+ * NOT every exchange - only ~30% chance and on specific conditions
+ */
+function generateSocialComparison(profile, exchangeCount, userResponse) {
+  const archetype = profile?.primary_archetype || 'analyst';
+  const lang = profile?.language || 'id';
+
+  // Only trigger occasionally (30% chance) and after exchange 2
+  if (exchangeCount < 2 || Math.random() > 0.30) {
+    return null;
+  }
+
+  // Social comparison templates by archetype
+  const comparisons = {
+    id: {
+      analyst: [
+        '68% analyst lain memilih opsi yang lebih berani di sini.',
+        'Kebanyakan analyst menghabiskan waktu di detail ini juga.',
+        '72% dengan gaya berpikirmu memilih alternatif lain.'
+      ],
+      risk_taker: [
+        '54% risk-taker lain justru lebih hati-hati di titik ini.',
+        'Surprisingly, kebanyakan risk-taker pause di sini.',
+        '61% dengan gayamu memilih mitigasi risiko dulu.'
+      ],
+      builder: [
+        '65% builder lain langsung eksekusi di sini.',
+        'Kebanyakan builder sudah move on ke langkah berikutnya.',
+        '78% dengan gayamu fokus pada quick wins dulu.'
+      ],
+      strategist: [
+        '59% strategist lain melihat implikasi jangka panjang.',
+        'Kebanyakan strategist menimbang stakeholder lain di sini.',
+        '71% dengan gayamu mempertimbangkan skenario alternatif.'
+      ]
+    },
+    en: {
+      analyst: [
+        '68% of analysts chose a bolder option here.',
+        'Most analysts also spent time on this detail.',
+        '72% with your thinking style chose differently.'
+      ],
+      risk_taker: [
+        '54% of risk-takers were more cautious here.',
+        'Surprisingly, most risk-takers paused here.',
+        '61% with your style chose risk mitigation first.'
+      ],
+      builder: [
+        '65% of builders executed immediately here.',
+        'Most builders already moved to the next step.',
+        '78% with your style focused on quick wins first.'
+      ],
+      strategist: [
+        '59% of strategists considered long-term implications.',
+        'Most strategists weighed other stakeholders here.',
+        '71% with your style considered alternative scenarios.'
+      ]
+    }
+  };
+
+  const archetypeComparisons = comparisons[lang]?.[archetype] || comparisons.id.analyst;
+  const randomComparison = archetypeComparisons[Math.floor(Math.random() * archetypeComparisons.length)];
+
+  return {
+    text: randomComparison,
+    type: 'social_comparison'
+  };
+}
+
+/**
+ * ============================================
+ * MICRO FEEDBACK SYSTEM (Event-based, varied)
+ * ============================================
+ * Short 2-3 word feedback, NOT every exchange
+ * Based on response patterns and conditions
+ */
+function generateMicroFeedback(profile, exchangeCount, userResponse, responseType) {
+  const lang = profile?.language || 'id';
+  const responseLength = userResponse?.length || 0;
+
+  // Only trigger 40% of the time for variety
+  if (Math.random() > 0.40) {
+    return null;
+  }
+
+  // Different feedback types based on conditions
+  let feedbackPool = [];
+
+  if (responseLength > 100) {
+    // Long, thoughtful response
+    feedbackPool = lang === 'id'
+      ? ['Reasoning solid.', 'Argumen kuat.', 'Detail bagus.', 'Well thought.']
+      : ['Solid reasoning.', 'Strong argument.', 'Good detail.', 'Well thought.'];
+  } else if (responseLength > 50) {
+    // Medium response
+    feedbackPool = lang === 'id'
+      ? ['Noted.', 'Got it.', 'Dicatat.', 'Oke.']
+      : ['Noted.', 'Got it.', 'Recorded.', 'Okay.'];
+  } else {
+    // Short/decisive response
+    feedbackPool = lang === 'id'
+      ? ['Quick call.', 'Tegas.', 'Decisive.', 'To the point.']
+      : ['Quick call.', 'Decisive.', 'Sharp.', 'To the point.'];
+  }
+
+  // Add stress-test specific feedback
+  if (responseType === 'stress_test') {
+    const stressFeedback = lang === 'id'
+      ? ['Diuji.', 'Challenge noted.', 'Tested.']
+      : ['Tested.', 'Challenge noted.', 'Stressed.'];
+    feedbackPool = [...feedbackPool, ...stressFeedback];
+  }
+
+  // Add exchange-based feedback
+  if (exchangeCount >= 3) {
+    const progressFeedback = lang === 'id'
+      ? ['Hampir stabil.', 'Forming pattern.', 'Konsisten.']
+      : ['Almost stable.', 'Forming pattern.', 'Consistent.'];
+    feedbackPool = [...feedbackPool, ...progressFeedback];
+  }
+
+  const randomFeedback = feedbackPool[Math.floor(Math.random() * feedbackPool.length)];
+
+  return {
+    text: randomFeedback,
+    type: 'micro_feedback'
+  };
+}
+
+/**
+ * ============================================
  * FRIKSI #3: EXTERNALIZED FAILURE LANGUAGE
  * ============================================
  * Templates untuk menyalahkan sistem/skenario, bukan user
@@ -340,6 +473,12 @@ router.post('/follow-up', async (req, res) => {
     // Calculate contextual countdown signals
     const countdownSignal = calculateCountdownSignal(problem, profile, exchange_count, user_response, visual_state);
 
+    // Generate social comparison (event-based, ~30% chance)
+    const socialComparison = generateSocialComparison(profile, exchange_count, user_response);
+
+    // Generate micro feedback (event-based, ~40% chance)
+    const microFeedback = generateMicroFeedback(profile, exchange_count, user_response, responseType);
+
     const defaultFollowUp = lang === 'id'
       ? "Apa langkah pertamamu?"
       : "What's your first step?";
@@ -353,7 +492,10 @@ router.post('/follow-up', async (req, res) => {
       // Contextual countdown signals
       show_countdown: countdownSignal.show_countdown,
       urgency_reason: countdownSignal.urgency_reason,
-      suggested_visual_state: countdownSignal.suggested_visual_state
+      suggested_visual_state: countdownSignal.suggested_visual_state,
+      // Social comparison and micro feedback (event-based)
+      social_comparison: socialComparison,
+      micro_feedback: microFeedback
     });
   } catch (error) {
     console.error('Follow-up generation error:', error);
