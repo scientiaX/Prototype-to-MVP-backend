@@ -196,36 +196,6 @@ router.post('/follow-up', async (req, res) => {
       responseType = 'stress_test';
     }
 
-    // Dynamic interaction type selection (vary between text and options)
-    // Pattern: First exchange = text, then alternate or use AI decision
-    let interactionType = 'TEXT_COMMIT'; // default
-    let generatedOptions = null;
-
-    // Every other exchange could be option-based for variety
-    if (exchange_count > 1 && exchange_count % 2 === 0) {
-      interactionType = 'OPTION_SELECT';
-      // Generate contextual options based on the problem
-      const optionsPrompt = lang === 'id'
-        ? `Berdasarkan respons user: "${user_response}", buat 2-3 pilihan opsi singkat untuk pertanyaan lanjutan. Format: opsi1|opsi2|opsi3`
-        : `Based on user response: "${user_response}", create 2-3 short option choices for follow-up. Format: option1|option2|option3`;
-
-      try {
-        const { invokeLowLevelAI } = await import('../config/cloudflareAI.js');
-        const optionsResponse = await invokeLowLevelAI({ prompt: optionsPrompt });
-        if (optionsResponse) {
-          generatedOptions = optionsResponse.split('|').map(o => o.trim()).filter(o => o.length > 0).slice(0, 3);
-          if (generatedOptions.length < 2) {
-            // Fallback if AI didn't generate enough options
-            interactionType = 'TEXT_COMMIT';
-            generatedOptions = null;
-          }
-        }
-      } catch (optErr) {
-        console.error('Options generation failed, falling back to text:', optErr);
-        interactionType = 'TEXT_COMMIT';
-      }
-    }
-
     // Build personalized mentor prompt with visual state tone
     const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
     const fullPrompt = `${mentorPrompt.system}\n\n${mentorPrompt.user}`;
@@ -256,16 +226,47 @@ router.post('/follow-up', async (req, res) => {
       }
     }
 
-    // Check if mentor decides to conclude (after minimum exchanges)
+    // Parse interaction type from AI response markers
+    let interactionType = 'TEXT_COMMIT';
+    let generatedOptions = null;
+    let cleanedResponse = response || '';
+
+    // Check for [OPSI] or [OPTION] marker
+    if (cleanedResponse.includes('[OPSI]') || cleanedResponse.includes('[OPTION]')) {
+      interactionType = 'OPTION_SELECT';
+      cleanedResponse = cleanedResponse.replace('[OPSI]', '').replace('[OPTION]', '').trim();
+
+      // Extract A) B) options from response
+      const optionMatches = cleanedResponse.match(/[A-B]\)\s*[^A-B\)]+/g);
+      if (optionMatches && optionMatches.length >= 2) {
+        generatedOptions = optionMatches.map(opt => ({
+          text: opt.replace(/^[A-B]\)\s*/, '').trim()
+        }));
+        // Remove options from question text
+        cleanedResponse = cleanedResponse.replace(/[A-B]\)\s*[^A-B\)]+/g, '').trim();
+      }
+    }
+    // Check for [TASK] marker
+    else if (cleanedResponse.includes('[TASK]')) {
+      interactionType = 'TASK_EXECUTE';
+      cleanedResponse = cleanedResponse.replace('[TASK]', '').trim();
+    }
+    // Check for [TEXT] marker (explicit) or default
+    else {
+      cleanedResponse = cleanedResponse.replace('[TEXT]', '').trim();
+    }
+
+    // Check if mentor decides to conclude
     const concludeMarker = lang === 'id' ? '[selesai]' : '[conclude]';
-    const shouldConclude = exchange_count >= conclusionThreshold && response?.toLowerCase().includes(concludeMarker.toLowerCase());
+    const shouldConclude = exchange_count >= conclusionThreshold && cleanedResponse.toLowerCase().includes(concludeMarker.toLowerCase());
+    cleanedResponse = cleanedResponse.replace(/\[selesai\]|\[conclude\]/gi, '').trim();
 
     const defaultFollowUp = lang === 'id'
-      ? "Bisa ceritakan lebih lanjut tentang alasanmu?"
-      : "Can you tell me more about your reasoning?";
+      ? "Apa langkah pertamamu?"
+      : "What's your first step?";
 
     res.json({
-      question: response?.replace(concludeMarker, '').replace('[selesai]', '').replace('[conclude]', '').trim() || defaultFollowUp,
+      question: cleanedResponse || defaultFollowUp,
       type: responseType,
       should_conclude: shouldConclude,
       interaction_type: interactionType,
@@ -314,144 +315,75 @@ router.post('/follow-up', async (req, res) => {
 });
 
 /**
- * Build personalized mentor prompt based on archetype, behavior, and visual state
- * Visual states: calm, focused, urgent, critical
+ * Build personalized mentor prompt - STRICT SHORT RESPONSES
+ * 1 question per exchange, AI decides interaction type
  */
 function buildMentorPrompt(problem, userResponse, profile, exchangeCount, responseType, visualState = 'calm') {
-  const archetype = profile?.primary_archetype || 'analyst';
-  const thinkingStyle = profile?.thinking_style || 'explorative';
   const language = profile?.language || 'id';
+  const isQuickMode = problem?.duration_type === 'quick';
+  const maxExchanges = isQuickMode ? 2 : 3;
 
-  // Archetype-specific mentoring style
-  const archetypeStyles = {
-    risk_taker: {
-      style: 'langsung, to the point, menantang',
-      focus: 'risiko, speed, keberanian, untung-rugi',
-      challenge: 'terlalu cepat tanpa pertimbangan'
-    },
-    analyst: {
-      style: 'detail, sistematis, data-driven',
-      focus: 'data, evidence, analisis, implikasi',
-      challenge: 'overthinking, takut bertindak'
-    },
-    builder: {
-      style: 'praktis, action-oriented, konkret',
-      focus: 'eksekusi, langkah nyata, resource',
-      challenge: 'skip planning, terlalu fokus doing'
-    },
-    strategist: {
-      style: 'big picture, jangka panjang, multi-stakeholder',
-      focus: 'visi, alignment, positioning',
-      challenge: 'terlalu abstrak, kurang grounded'
-    }
-  };
+  // Determine if AI should conclude
+  const shouldConsiderConclusion = exchangeCount >= maxExchanges;
 
-  // Visual state tone mapping from Experience Layer
-  const visualStateTones = {
-    calm: {
-      style: 'reflektif dan tenang',
-      instruction: 'Bicara dengan sabar, beri ruang berpikir',
-      examples: ['Menarik, coba pikirkan...', 'Apa yang jadi pertimbanganmu?']
-    },
-    focused: {
-      style: 'langsung dan jelas',
-      instruction: 'Fokus pada pertanyaan inti, tidak bertele-tele',
-      examples: ['Apa keputusanmu?', 'Langkah konkretnya?']
-    },
-    urgent: {
-      style: 'singkat dan tegas',
-      instruction: 'Maksimal 1-2 kalimat. Tekan untuk segera memutuskan.',
-      examples: ['Putuskan sekarang.', 'Waktu terbatas.']
-    },
-    critical: {
-      style: 'sangat tegas dan final',
-      instruction: 'Paling singkat mungkin. Ini kesempatan terakhir.',
-      examples: ['Waktu habis. Kunci.', 'Final.']
-    }
-  };
+  // Visual state affects length
+  const isUrgent = visualState === 'urgent' || visualState === 'critical';
 
-  const archetypeStyle = archetypeStyles[archetype] || archetypeStyles.analyst;
-  const toneStyle = visualStateTones[visualState] || visualStateTones.calm;
-  const isEnglish = language === 'en';
+  const systemPrompt = language === 'id'
+    ? `Kamu mentor yang berpikir seperti user. Tugasmu: TANYA 1 PERTANYAAN SAJA per giliran.
 
-  // Language-aware system prompt
-  const systemPrompt = isEnglish
-    ? `You are a business mentor who is ${archetypeStyle.style}. 
+ATURAN KETAT:
+1. MAKSIMAL 2 KALIMAT. Tidak boleh lebih.
+2. SATU PERTANYAAN per response. Bukan daftar pertanyaan.
+3. Jangan prediksi jawaban user atau exchange selanjutnya.
+4. Jangan jelaskan kenapa kamu bertanya.
+5. Bahasa santai, natural, seperti teman diskusi.
 
-CURRENT TONE: ${toneStyle.style}
-${toneStyle.instruction}
+PILIH JENIS INTERAKSI (tulis di awal response dengan format [TIPE]):
+- [TEXT] = User menjawab bebas (default)
+- [OPSI] = Beri 2 pilihan jelas, user pilih satu. Format: A) ... B) ...
+- [TASK] = Minta user melakukan sesuatu spesifik
 
-IMPORTANT RULES:
-1. DON'T use complex jargon. Use simple: reason, pros-cons, consideration
-2. Your response can be: follow-up questions, short explanations, small tasks, or reflections
-3. Talk like a mentor who cares, not a chatbot
-4. Focus on: ${archetypeStyle.focus}
-5. Watch for this archetype's weakness: ${archetypeStyle.challenge}
-6. Natural and simple English
-7. Example tone: "${toneStyle.examples[0]}"
+KAPAN PAKAI [OPSI]:
+- Saat ada trade-off jelas
+- Saat user ragu antara 2 hal
+- Untuk mempercepat keputusan
 
-SENTENCE COUNT BASED ON STATE:
-- Calm/Focused: 2-3 sentences
-- Urgent: 1-2 sentences
-- Critical: 1 sentence only
+${shouldConsiderConclusion ? 'Jika user sudah konsisten dan jelas, tambahkan [selesai] di akhir.' : ''}
 
-RESPONSE TYPE:
-- Exchange 1-2: Dig deeper, ask for clarification, break into sub-problems
-- Exchange 3+: Apply pressure, stress test, challenge assumptions
-- If sufficient (4+ exchange and user is consistent), add [conclude] at the end
+JANGAN: kata "menarik", "bagus", jargon bisnis, penjelasan panjang.`
 
-DON'T:
-- Say "interesting" or "good" too much
-- Use templates that feel like a bot
-- Ask what was already answered
-- Give direct answers`
-    : `Kamu adalah mentor bisnis yang ${archetypeStyle.style}. 
+    : `You are a mentor who thinks like the user. Your job: ASK 1 QUESTION ONLY per turn.
 
-TONE SAAT INI: ${toneStyle.style}
-${toneStyle.instruction}
+STRICT RULES:
+1. MAX 2 SENTENCES. No more.
+2. ONE QUESTION per response. Not a list.
+3. Don't predict user's answer or next exchanges.
+4. Don't explain why you're asking.
+5. Casual, natural language, like a friend discussing.
 
-ATURAN PENTING:
-1. JANGAN gunakan kata-kata sulit seperti "reasoning", "trade-off". Gunakan: alasan, untung-rugi, pertimbangan
-2. Responmu bisa berupa: pertanyaan lanjutan, penjelasan singkat, tugas kecil, atau refleksi
-3. Bicara seperti mentor yang peduli, bukan chatbot
-4. Fokus pada: ${archetypeStyle.focus}
-5. Waspadai kelemahan archetype ini: ${archetypeStyle.challenge}
-6. Bahasa Indonesia yang natural dan sederhana
-7. Contoh tone: "${toneStyle.examples[0]}"
+CHOOSE INTERACTION TYPE (write at start with format [TYPE]):
+- [TEXT] = User answers freely (default)
+- [OPTION] = Give 2 clear choices, user picks one. Format: A) ... B) ...
+- [TASK] = Ask user to do something specific
 
-JUMLAH KALIMAT BERDASARKAN KONDISI:
-- Calm/Focused: 2-3 kalimat
-- Urgent: 1-2 kalimat
-- Critical: 1 kalimat saja
+WHEN TO USE [OPTION]:
+- When there's a clear trade-off
+- When user is torn between 2 things
+- To speed up decision
 
-TIPE RESPONMU:
-- Exchange 1-2: Gali lebih dalam, minta klarifikasi, pecah jadi sub-masalah
-- Exchange 3+: Beri tekanan, stress test, challenge asumsi
-- Jika sudah cukup (4+ exchange dan user konsisten), tambahkan [selesai] di akhir
+${shouldConsiderConclusion ? 'If user is already consistent and clear, add [conclude] at end.' : ''}
 
-JANGAN:
-- Bilang "menarik" atau "bagus" berlebihan
-- Gunakan template yang terasa bot
-- Tanya hal yang sudah dijawab
-- Beri jawaban langsung`;
+DON'T: "interesting", "good", business jargon, long explanations.`;
 
-  const userPrompt = isEnglish
-    ? `PROBLEM:
-${problem.title}
-${problem.context}
-
-USER'S ANSWER (exchange #${exchangeCount}):
-"${userResponse}"
-
-Give mentor response with ${toneStyle.style} tone:`
-    : `MASALAH:
-${problem.title}
-${problem.context}
-
-JAWABAN USER (exchange ke-${exchangeCount}):
-"${userResponse}"
-
-Beri respon mentor dengan tone ${toneStyle.style}:`;
+  // MINIMAL problem context - just title, not full description
+  const userPrompt = language === 'id'
+    ? `Konteks: ${problem.title}
+Jawaban user: "${userResponse}"
+Exchange ke-${exchangeCount}. ${isUrgent ? 'SINGKAT.' : ''}`
+    : `Context: ${problem.title}
+User answer: "${userResponse}"
+Exchange #${exchangeCount}. ${isUrgent ? 'BE BRIEF.' : ''}`;
 
   return { system: systemPrompt, user: userPrompt };
 }
