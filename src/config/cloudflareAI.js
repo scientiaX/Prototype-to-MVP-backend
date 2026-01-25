@@ -32,16 +32,16 @@ const getConfig = () => {
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
     if (!apiToken) {
-        console.warn('[Cloudflare AI] AI_API_RESPONSE not set. Realtime AI features may not work.');
+        console.error('[Cloudflare AI] ERROR: AI_API_RESPONSE not set!');
         return null;
     }
 
     if (!accountId) {
-        console.warn('[Cloudflare AI] CLOUDFLARE_ACCOUNT_ID not set. Realtime AI features may not work.');
+        console.error('[Cloudflare AI] ERROR: CLOUDFLARE_ACCOUNT_ID not set!');
         return null;
     }
 
-    console.log('[Cloudflare AI] Configuration loaded');
+    console.log(`[Cloudflare AI] Config OK - Account: ${accountId.substring(0, 8)}..., Token: ${apiToken.substring(0, 10)}...`);
 
     return { apiToken, accountId };
 };

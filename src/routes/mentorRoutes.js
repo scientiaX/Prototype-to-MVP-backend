@@ -228,11 +228,33 @@ router.post('/follow-up', async (req, res) => {
 
     // Build personalized mentor prompt with visual state tone
     const mentorPrompt = buildMentorPrompt(problem, user_response, profile, exchange_count, responseType, visual_state);
-
-    // Generate response using Cloudflare AI (no RPM limit for realtime)
-    const { invokeMidLevelAI } = await import('../config/cloudflareAI.js');
     const fullPrompt = `${mentorPrompt.system}\n\n${mentorPrompt.user}`;
-    const response = await invokeMidLevelAI({ prompt: fullPrompt });
+
+    // Try Cloudflare first, fallback to Groq if null
+    let response = null;
+    try {
+      const { invokeMidLevelAI } = await import('../config/cloudflareAI.js');
+      response = await invokeMidLevelAI({ prompt: fullPrompt });
+      if (response) {
+        console.log('[Mentor] Cloudflare AI response received');
+      }
+    } catch (cfErr) {
+      console.error('[Mentor] Cloudflare AI error:', cfErr.message);
+    }
+
+    // Fallback to Groq if Cloudflare failed
+    if (!response) {
+      console.log('[Mentor] Cloudflare null, trying Groq fallback...');
+      try {
+        const { invokeLowLevelAI } = await import('../config/groqAI.js');
+        response = await invokeLowLevelAI({ prompt: fullPrompt });
+        if (response) {
+          console.log('[Mentor] Groq AI fallback response received');
+        }
+      } catch (groqErr) {
+        console.error('[Mentor] Groq fallback error:', groqErr.message);
+      }
+    }
 
     // Check if mentor decides to conclude (after minimum exchanges)
     const concludeMarker = lang === 'id' ? '[selesai]' : '[conclude]';
