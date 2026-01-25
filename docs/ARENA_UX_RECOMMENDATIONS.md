@@ -65,7 +65,7 @@
 | **Visual** | Static boxes: Problem context → Objective → Constraints → Question box |
 | **Timer** | Stopwatch pasif (hanya menghitung, no stakes) |
 | **AI Feedback** | Label text kecil: "Mulai", "Menggali", "Tekanan", "Klarifikasi" |
-| **Pressure** | Hampir tidak ada — hanya warna timer berubah setelah 2 menit |
+| **Pressure** | Hampir tidak ada — hanya warna timer berubah setelah 2-3 menit (Quick Arena) |
 | **Interaksi** | Linear: tulis jawaban → submit → tunggu pertanyaan baru |
 | **Immersion** | Minimal — terasa seperti form submission |
 | **Emosi** | Netral — tidak ada elemen kejutan atau stakes |

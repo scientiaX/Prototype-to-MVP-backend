@@ -10,6 +10,7 @@ Dokumen ini mengubah seluruh narasi desain kognitif menjadi **arsitektur sistem,
 Membangun platform PBL (Problem-Based Learning) yang:
 - **Tidak terasa berpikir**, tapi
 - **Membentuk intuisi kognitif lewat aksi berulang**
+- **Inklusif**: Mendukung multi-bahasa (English & Indonesian) untuk jangkauan pengguna yang lebih luas.
 
 ### KPI Utama (bukan vanity)
 - Time-to-first-action < **5 detik**
