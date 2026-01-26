@@ -27,6 +27,41 @@ import { generatePersonalizedProblem, generateXPFromCharacteristics, evaluateSol
  */
 export const initializeSession = async (sessionId, problemId, userId) => {
     try {
+        const existingMemory = await SessionMemory.findOne({ session_id: sessionId });
+        const existingMetrics = await ArenaSessionMetrics.findOne({ session_id: sessionId });
+
+        if (existingMemory && existingMetrics) {
+            if (!existingMemory.is_active) {
+                existingMemory.is_active = true;
+                existingMemory.adaptive_state.user_state = 'active';
+                existingMemory.adaptive_state.intervention_in_progress = false;
+                existingMemory.adaptive_state.last_keystroke_at = new Date();
+                await existingMemory.save();
+            }
+
+            if (!existingMetrics.is_active) {
+                existingMetrics.is_active = true;
+                existingMetrics.last_updated = new Date();
+                await existingMetrics.save();
+            }
+
+            const timeouts = existingMemory.adaptive_state?.current_time_limits
+                ? {
+                    warning: existingMemory.adaptive_state.current_time_limits.response_warning,
+                    check: existingMemory.adaptive_state.current_time_limits.comprehension_check,
+                    force: existingMemory.adaptive_state.current_time_limits.force_change
+                }
+                : systemLayer.getAdaptiveTimeouts({ primary_archetype: 'analyst' }, 3, 'normal');
+
+            return {
+                metrics: existingMetrics,
+                memory: existingMemory,
+                timeouts,
+                initialized: true,
+                reused: true
+            };
+        }
+
         // Get problem and profile
         const problem = await Problem.findOne({ problem_id: problemId });
         const profile = await UserProfile.findOne({ user_id: userId });
@@ -35,8 +70,12 @@ export const initializeSession = async (sessionId, problemId, userId) => {
             throw new Error('Problem or profile not found');
         }
 
+        const questionType = Number(problem.difficulty) <= 3 ? 'simple'
+            : Number(problem.difficulty) >= 8 ? 'complex'
+                : 'normal';
+
         // Calculate adaptive timeouts based on profile
-        const timeouts = systemLayer.getAdaptiveTimeouts(profile, problem.difficulty);
+        const timeouts = systemLayer.getAdaptiveTimeouts(profile, problem.difficulty, questionType);
 
         // Create session metrics
         const metrics = await ArenaSessionMetrics.create({
@@ -124,8 +163,45 @@ export const initializeSession = async (sessionId, problemId, userId) => {
  */
 export const processUserKeystrokes = async (sessionId, keystrokeData) => {
     try {
-        // Track in system layer (free)
+        const eventType = String(keystrokeData?.event_type || '').toLowerCase();
+        const timestamp = Number(keystrokeData?.timestamp || Date.now());
+
+        if (eventType === 'question_shown') {
+            const memory = await SessionMemory.findOne({ session_id: sessionId });
+            if (memory) {
+                const promptStartedAt = new Date(timestamp);
+                memory.adaptive_state.prompt_started_at = promptStartedAt;
+                memory.adaptive_state.prompt_id = String(keystrokeData?.question_id || `q_${memory.adaptive_state.current_question_index}`);
+                memory.adaptive_state.prompt_text = String(keystrokeData?.question_text || '');
+                memory.adaptive_state.prompt_requires_typing = keystrokeData?.requires_typing !== undefined
+                    ? !!keystrokeData.requires_typing
+                    : true;
+                memory.adaptive_state.prompt_has_input = false;
+                memory.adaptive_state.last_keystroke_at = promptStartedAt;
+                memory.adaptive_state.intervention_in_progress = false;
+                await memory.save();
+            }
+            return { processed: true, event: 'question_shown' };
+        }
+
         await systemLayer.trackKeystroke(sessionId, keystrokeData);
+
+        const memory = await SessionMemory.findOne({ session_id: sessionId });
+        if (memory?.adaptive_state?.prompt_started_at && memory?.adaptive_state?.prompt_requires_typing && !memory?.adaptive_state?.prompt_has_input) {
+            const timeToStartTypingMs = Math.max(0, timestamp - new Date(memory.adaptive_state.prompt_started_at).getTime());
+            memory.adaptive_state.prompt_has_input = true;
+            await memory.save();
+
+            await systemLayer.recordResponseTiming(sessionId, {
+                question_id: memory.adaptive_state.prompt_id || `q_${memory.adaptive_state.current_question_index}`,
+                question_text: memory.adaptive_state.prompt_text || memory.problem_snapshot?.objective || '',
+                time_to_start_typing_ms: timeToStartTypingMs,
+                time_to_submit_ms: 0,
+                response_length: 0,
+                revision_count: 0,
+                keystrokeTimes: []
+            });
+        }
 
         return { processed: true };
     } catch (error) {
@@ -161,25 +237,101 @@ export const requestNextAction = async (sessionId) => {
 
         let action;
 
+        const computeSituationalDifficulty = () => {
+            const base = Number(problem?.difficulty ?? 5);
+            const text = String(memory?.adaptive_state?.prompt_text || '');
+            const len = text.length;
+            const marks = (text.match(/[?!.:]/g) || []).length;
+            const complexity = len > 160 ? 2 : len > 90 ? 1 : 0;
+            const ambiguity = marks === 0 && len > 0 ? 1 : 0;
+            return Math.max(1, Math.min(10, base + complexity + ambiguity));
+        };
+
+        const getArchetypePolicy = () => {
+            const archetype = profile?.primary_archetype || 'analyst';
+            const decisionSpeed = Number(profile?.decision_speed ?? 0.5);
+            const riskAppetite = Number(profile?.risk_appetite ?? 0.5);
+            const commonRegret = String(profile?.common_regret || '');
+            const stuck = String(profile?.last_stuck_experience || '');
+
+            const overthinker = archetype === 'analyst' || archetype === 'strategist' ||
+                decisionSpeed <= 0.45 || commonRegret === 'too_slow' || stuck === 'perfectionism';
+            const reckless = (archetype === 'risk_taker' && (riskAppetite >= 0.65 && decisionSpeed >= 0.6)) || commonRegret === 'too_reckless';
+
+            return { archetype, decisionSpeed, riskAppetite, overthinker, reckless };
+        };
+
+        const shouldStartCountdownNow = () => {
+            const { overthinker, archetype } = getArchetypePolicy();
+            if (!memory.adaptive_state.prompt_requires_typing) return false;
+            if (!overthinker) return false;
+
+            const situational = computeSituationalDifficulty();
+            if (situational > 4) return false;
+
+            const promptStartedAt = memory.adaptive_state.prompt_started_at ? new Date(memory.adaptive_state.prompt_started_at).getTime() : null;
+            const secondsSincePrompt = promptStartedAt ? Math.floor((Date.now() - promptStartedAt) / 1000) : 0;
+            const triggerSec = archetype === 'analyst' ? 12 : archetype === 'strategist' ? 15 : 18;
+            return secondsSincePrompt >= triggerSec;
+        };
+
+        const getCountdownSeconds = () => {
+            const situational = computeSituationalDifficulty();
+            const { archetype, decisionSpeed } = getArchetypePolicy();
+
+            const base = situational <= 3 ? 18 : situational <= 4 ? 22 : 30;
+            const speedBonus = decisionSpeed <= 0.35 ? -3 : decisionSpeed <= 0.45 ? 0 : 4;
+            const archetypeDelta = archetype === 'analyst' ? -2 : archetype === 'strategist' ? 0 : archetype === 'builder' ? 2 : 4;
+            return Math.max(10, base + speedBonus + archetypeDelta);
+        };
+
         switch (interventionCheck.type) {
             case 'warning':
-                // Use AI Simple for warning message
-                const warning = await aiSimple.generateWarningMessage(
-                    profile,
-                    { type: 'pause', seconds: interventionCheck.seconds_idle, problem_title: problem.title }
-                );
+                if (shouldStartCountdownNow()) {
+                    const seconds = getCountdownSeconds();
+                    const lang = profile?.language === 'id' ? 'id' : 'en';
+                    const { archetype } = getArchetypePolicy();
+                    const message = lang === 'id'
+                        ? archetype === 'analyst'
+                            ? `Stop analisis. Mulai tulis dalam ${seconds} detik. Kalau tidak, prompt akan dipersempit.`
+                            : `Mulai bergerak dalam ${seconds} detik. Kalau tidak, prompt akan dipersempit.`
+                        : archetype === 'analyst'
+                            ? `Stop analyzing. Start writing within ${seconds} seconds. Otherwise the prompt will be narrowed.`
+                            : `Move now. Start writing within ${seconds} seconds. Otherwise the prompt will be narrowed.`;
 
-                await systemLayer.recordIntervention(sessionId, {
-                    type: 'warning',
-                    reason: `User idle for ${interventionCheck.seconds_idle}s`,
-                    user_state: memory.adaptive_state.user_state
-                });
+                    await systemLayer.recordIntervention(sessionId, {
+                        type: 'countdown',
+                        reason: `Fast decision training (difficulty=${Number(problem?.difficulty ?? 0)}), idle=${interventionCheck.seconds_idle}s`,
+                        user_state: memory.adaptive_state.user_state
+                    });
 
-                action = {
-                    action: 'show_warning',
-                    message: warning,
-                    seconds_idle: interventionCheck.seconds_idle
-                };
+                    memory.adaptive_state.intervention_in_progress = true;
+                    await memory.save();
+
+                    action = {
+                        action: 'start_countdown',
+                        seconds,
+                        message
+                    };
+                } else {
+                    // Use AI Simple for warning message
+                    const warning = await aiSimple.generateWarningMessage(
+                        profile,
+                        { type: 'pause', seconds: interventionCheck.seconds_idle, problem_title: problem.title }
+                    );
+
+                    await systemLayer.recordIntervention(sessionId, {
+                        type: 'warning',
+                        reason: `User idle for ${interventionCheck.seconds_idle}s`,
+                        user_state: memory.adaptive_state.user_state
+                    });
+
+                    action = {
+                        action: 'show_warning',
+                        message: warning,
+                        seconds_idle: interventionCheck.seconds_idle
+                    };
+                }
                 break;
 
             case 'comprehension_check':
@@ -260,10 +412,28 @@ export const handleInterventionResponse = async (sessionId, responseType) => {
                 memory.adaptive_state.intervention_in_progress = true;
                 await memory.save();
 
+                const base = Number(problem?.difficulty ?? 5);
+                const text = String(memory?.adaptive_state?.prompt_text || '');
+                const len = text.length;
+                const marks = (text.match(/[?!.:]/g) || []).length;
+                const complexity = len > 160 ? 2 : len > 90 ? 1 : 0;
+                const ambiguity = marks === 0 && len > 0 ? 1 : 0;
+                const situational = Math.max(1, Math.min(10, base + complexity + ambiguity));
+
+                const archetype = memory.user_profile_snapshot?.primary_archetype || 'analyst';
+                const decisionSpeed = Number(memory.user_profile_snapshot?.decision_speed ?? 0.5);
+                const baseSeconds = situational <= 3 ? 18 : situational <= 4 ? 22 : 30;
+                const speedBonus = decisionSpeed <= 0.35 ? -3 : decisionSpeed <= 0.45 ? 0 : 4;
+                const archetypeDelta = archetype === 'analyst' ? -2 : archetype === 'strategist' ? 0 : archetype === 'builder' ? 2 : 4;
+                const seconds = Math.max(10, baseSeconds + speedBonus + archetypeDelta);
+                const lang = memory.user_profile_snapshot?.language === 'id' ? 'id' : 'en';
+
                 result = {
                     action: 'start_countdown',
-                    seconds: 30,
-                    message: "Oke. Kamu punya 30 detik untuk mulai menulis atau pertanyaan akan diganti agar lebih spesifik."
+                    seconds,
+                    message: lang === 'id'
+                        ? `Oke. Mulai tulis dalam ${seconds} detik atau prompt akan dipersempit.`
+                        : `Okay. Start writing within ${seconds} seconds or the prompt will be narrowed.`
                 };
                 break;
 

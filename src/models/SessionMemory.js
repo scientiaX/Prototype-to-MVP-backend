@@ -109,6 +109,12 @@ const sessionMemorySchema = new mongoose.Schema({
         current_question_index: { type: Number, default: 0 },
         questions_asked: [String],
 
+        prompt_started_at: Date,
+        prompt_id: String,
+        prompt_text: String,
+        prompt_requires_typing: { type: Boolean, default: true },
+        prompt_has_input: { type: Boolean, default: false },
+
         // User state tracking
         user_state: {
             type: String,
