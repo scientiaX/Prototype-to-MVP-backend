@@ -335,6 +335,35 @@ router.post('/abandon', async (req, res) => {
   }
 });
 
+router.get('/monthly-indicator/:user_id', async (req, res) => {
+  try {
+    const profile = await UserProfile.findOne({ user_id: req.params.user_id });
+
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const monthData = profile.monthly_arenas?.find(item => item.month === currentMonth);
+    const count = monthData?.count || 0;
+    const target = 20;
+    const progressPercent = Math.min((count / target) * 100, 100);
+
+    res.json({
+      user_id: req.params.user_id,
+      month: currentMonth,
+      count,
+      target,
+      progress_percent: progressPercent,
+      current_streak: profile.current_streak || 0,
+      longest_streak: profile.longest_streak || 0
+    });
+  } catch (error) {
+    console.error('Get monthly indicator error:', error);
+    res.status(500).json({ error: 'Failed to get monthly indicator' });
+  }
+});
+
 router.get('/user/:user_id', async (req, res) => {
   try {
     const sessions = await ArenaSession.find({ user_id: req.params.user_id })
