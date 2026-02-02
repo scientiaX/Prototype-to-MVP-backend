@@ -16,6 +16,10 @@ const userProfileSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  avatar_url: {
+    type: String,
+    default: ''
+  },
   language: {
     type: String,
     enum: ['en', 'id'],

@@ -2,6 +2,8 @@ import express from 'express';
 import UserProfile from '../models/UserProfile.js';
 import User from '../models/User.js';
 import { calculateProfile } from '../services/profileService.js';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
 
@@ -82,9 +84,22 @@ router.put('/:user_id', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const profiles = await UserProfile.find()
-      .sort({ total_arenas_completed: -1, 'xp_risk_taker': -1 })
-      .limit(100);
+    const profiles = await UserProfile.aggregate([
+      {
+        $addFields: {
+          total_xp: {
+            $add: [
+              { $ifNull: ["$xp_risk_taker", 0] },
+              { $ifNull: ["$xp_analyst", 0] },
+              { $ifNull: ["$xp_builder", 0] },
+              { $ifNull: ["$xp_strategist", 0] }
+            ]
+          }
+        }
+      },
+      { $sort: { total_xp: -1, total_arenas_completed: -1 } },
+      { $limit: 100 }
+    ]);
 
     res.json(profiles);
   } catch (error) {
