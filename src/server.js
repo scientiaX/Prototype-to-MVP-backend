@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from './config/database.js';
 
 import profileRoutes from './routes/profileRoutes.js';
@@ -18,6 +20,9 @@ import onboardingArenaRoutes from './routes/onboardingArenaRoutes.js';
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -27,14 +32,9 @@ app.use(helmet());
 
 // CORS configuration with multiple origins support
 const allowedOrigins = [
-  'https://prototype-to-mvp-frontend-production.up.railway.app',
-  'https://prototype-to-mvp-frontend-staging.up.railway.app',
   'https://novaxarena.tech',
   'https://www.novaxarena.tech',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000'
+  'https://dev.novaxarena.tech'
 ];
 
 // Add any additional origins from environment variable
