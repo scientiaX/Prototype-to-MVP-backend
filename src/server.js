@@ -29,6 +29,8 @@ app.use(helmet());
 const allowedOrigins = [
   'https://prototype-to-mvp-frontend-production.up.railway.app',
   'https://prototype-to-mvp-frontend-staging.up.railway.app',
+  'https://novaxarena.tech',
+  'https://www.novaxarena.tech',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
