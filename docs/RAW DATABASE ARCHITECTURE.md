@@ -290,6 +290,45 @@ ai_schema_conventions:
 
 ---
 
+### 5.3 Foto Profil — Penyimpanan & Skema
+
+Tujuan: menyimpan foto profil secara aman, efisien, dan mudah diakses lintas perangkat tanpa membebani frontend.
+
+- Lokasi penyimpanan
+  - Disimpan di Object Storage (MinIO/S3) sebagai berkas gambar.
+  - Frontend hanya menyimpan/menampilkan URL, bukan file asli.
+
+- Kolom referensi di tabel USERS
+  - `profile_photo_url` (varchar, optional): URL file aktif yang ditampilkan.
+  - `profile_photo_storage` (varchar enum: `s3|minio`): penyedia/storage yang digunakan.
+  - `profile_photo_variants` (jsonb): daftar varian (thumbnail) untuk performa, mis. `[{ "size_px": 64, "url": "..." }, { "size_px": 256, "url": "..." }]`.
+  - `profile_photo_mime` (varchar): tipe berkas, mis. `image/jpeg`.
+  - `profile_photo_size_bytes` (int): ukuran berkas asli.
+  - `profile_photo_updated_at` (timestamptz): waktu terakhir diperbarui.
+
+- Alur unggah yang disarankan
+  1. Frontend meminta “signed URL” ke backend.
+  2. Frontend mengunggah langsung ke Object Storage menggunakan signed URL.
+  3. Backend memverifikasi unggahan, membuat/menyimpan varian thumbnail, lalu mengisi kolom referensi di `USERS`.
+
+- Penyajian & akses
+  - Varian kecil (thumbnail) dapat dilayani via CDN/public URL untuk performa.
+  - Berkas asli dapat dilindungi dengan URL bertanda waktu (presigned) bila perlu privasi.
+  - Gunakan cache busting (hash/timestamp di nama file) saat mengganti foto agar perubahan segera terlihat.
+
+- Keamanan & audit
+  - Validasi tipe MIME dan batas ukuran di backend.
+  - Opsional: malware scan sebelum publikasi.
+  - Kontrol akses: hanya pemilik/admin yang boleh mengganti/menghapus.
+  - Catat perubahan di `AUDIT_LOG` (aksi `update` pada entity `users`).
+
+- Lifecycle & kebijakan
+  - Penggantian foto: hapus varian lama di storage dan update referensi database.
+  - Kebijakan retensi/hapus mengikuti permintaan pengguna (privasi/kompliansi).
+
+- AI‑readability
+  - `profile_photo_variants` disusun deskriptif agar agent mudah memilih resolusi sesuai konteks (mis. UI kecil vs besar).
+
 ## 6. Data Flow Architecture
 
 ### 6.1 Write Path — Command Flow
